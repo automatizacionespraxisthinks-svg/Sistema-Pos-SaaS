@@ -15,7 +15,12 @@
       "Bash(grep -l start:dev C:/Users/fredd/OneDrive/Documentos/PRAXIS Automatizaciones/Softwares/pos-saas-v2/services/*/package.json)",
       "Bash(cd /c/Users/fredd/OneDrive/Documentos/PRAXIS Automatizaciones/Softwares)",
       "Bash(pandoc --track-changes=all \"C:/Users/fredd/OneDrive/Documentos/PRAXIS Automatizaciones/Softwares/simulador_pos_restaurante.docx\" -o \"/c/tmp/simulador_pos_restaurante.md\")",
-      "Bash(python3 /c/tmp/read_docx.py)"
+      "Bash(python3 /c/tmp/read_docx.py)",
+      "Bash(for svc:*)",
+      "Bash(do)",
+      "Read(//c/Users/fredd/OneDrive/Documentos/PRAXIS Automatizaciones/Softwares/pos-saas-v2/services/$svc/**)",
+      "Bash(echo \"--- $svc ---\")",
+      "Bash(done)"
     ]
   }
 }

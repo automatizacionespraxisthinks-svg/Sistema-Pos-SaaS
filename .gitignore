@@ -3,6 +3,11 @@ node_modules/
 .pnp
 .pnp.js
 
+# ─── Lock files (generated locally, avoid cross-OS conflicts in Docker) ───────
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
 # ─── Build output ─────────────────────────────────────────────────────────────
 dist/
 build/
