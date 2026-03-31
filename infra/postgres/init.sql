@@ -1,0 +1,17 @@
+CREATE DATABASE pos_auth;
+CREATE DATABASE pos_users;
+CREATE DATABASE pos_products;
+CREATE DATABASE pos_orders;
+CREATE DATABASE pos_inventory;
+CREATE DATABASE pos_payments;
+CREATE DATABASE pos_kitchen;
+CREATE DATABASE pos_analytics;
+
+GRANT ALL PRIVILEGES ON DATABASE pos_auth TO pos_user;
+GRANT ALL PRIVILEGES ON DATABASE pos_users TO pos_user;
+GRANT ALL PRIVILEGES ON DATABASE pos_products TO pos_user;
+GRANT ALL PRIVILEGES ON DATABASE pos_orders TO pos_user;
+GRANT ALL PRIVILEGES ON DATABASE pos_inventory TO pos_user;
+GRANT ALL PRIVILEGES ON DATABASE pos_payments TO pos_user;
+GRANT ALL PRIVILEGES ON DATABASE pos_kitchen TO pos_user;
+GRANT ALL PRIVILEGES ON DATABASE pos_analytics TO pos_user;

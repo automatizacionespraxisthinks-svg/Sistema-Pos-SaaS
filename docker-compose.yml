@@ -1,0 +1,142 @@
+version: '3.9'
+
+services:
+  # ── INFRASTRUCTURE ──────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: pos_postgres
+    environment:
+      POSTGRES_USER: pos_user
+      POSTGRES_PASSWORD: pos_password
+      POSTGRES_DB: pos_main
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pos_user -d pos_main"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [pos_net]
+
+  redis:
+    image: redis:7-alpine
+    container_name: pos_redis
+    ports: ["6379:6379"]
+    networks: [pos_net]
+
+  nats:
+    image: nats:2.10-alpine
+    container_name: pos_nats
+    ports: ["4222:4222", "8222:8222"]
+    command: ["--jetstream", "--http_port", "8222"]
+    networks: [pos_net]
+
+  # ── SERVICES ────────────────────────────────────────────────────
+  auth-service:
+    build: { context: ./services/auth-service }
+    container_name: pos_auth
+    ports: ["3001:3001"]
+    env_file: ./services/auth-service/.env.docker
+    depends_on:
+      postgres: { condition: service_healthy }
+    networks: [pos_net]
+
+  user-service:
+    build: { context: ./services/user-service }
+    container_name: pos_user
+    ports: ["3002:3002"]
+    env_file: ./services/user-service/.env.docker
+    depends_on:
+      postgres: { condition: service_healthy }
+    networks: [pos_net]
+
+  product-service:
+    build: { context: ./services/product-service }
+    container_name: pos_product
+    ports: ["3003:3003"]
+    env_file: ./services/product-service/.env.docker
+    depends_on:
+      postgres: { condition: service_healthy }
+    networks: [pos_net]
+
+  order-service:
+    build: { context: ./services/order-service }
+    container_name: pos_order
+    ports: ["3004:3004"]
+    env_file: ./services/order-service/.env.docker
+    depends_on:
+      postgres: { condition: service_healthy }
+    networks: [pos_net]
+
+  inventory-service:
+    build: { context: ./services/inventory-service }
+    container_name: pos_inventory
+    ports: ["3005:3005"]
+    env_file: ./services/inventory-service/.env.docker
+    depends_on:
+      postgres: { condition: service_healthy }
+    networks: [pos_net]
+
+  payment-service:
+    build: { context: ./services/payment-service }
+    container_name: pos_payment
+    ports: ["3006:3006"]
+    env_file: ./services/payment-service/.env.docker
+    depends_on:
+      postgres: { condition: service_healthy }
+    networks: [pos_net]
+
+  kitchen-service:
+    build: { context: ./services/kitchen-service }
+    container_name: pos_kitchen
+    ports: ["3007:3007"]
+    env_file: ./services/kitchen-service/.env.docker
+    depends_on:
+      postgres: { condition: service_healthy }
+    networks: [pos_net]
+
+  notification-service:
+    build: { context: ./services/notification-service }
+    container_name: pos_notification
+    ports: ["3008:3008"]
+    env_file: ./services/notification-service/.env.docker
+    networks: [pos_net]
+
+  analytics-service:
+    build: { context: ./services/analytics-service }
+    container_name: pos_analytics
+    ports: ["3009:3009"]
+    env_file: ./services/analytics-service/.env.docker
+    depends_on:
+      postgres: { condition: service_healthy }
+    networks: [pos_net]
+
+  api-gateway:
+    build: { context: ./services/api-gateway }
+    container_name: pos_gateway
+    ports: ["3000:3000"]
+    env_file: ./services/api-gateway/.env.docker
+    depends_on:
+      - auth-service
+      - product-service
+      - order-service
+    networks: [pos_net]
+
+  frontend:
+    build: { context: ./frontend }
+    container_name: pos_frontend
+    ports: ["3010:3010"]
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:3000
+    depends_on: [api-gateway]
+    networks: [pos_net]
+
+networks:
+  pos_net:
+    driver: bridge
+
+volumes:
+  postgres_data:

@@ -1,0 +1,13 @@
+{
+  "name": "pos-saas-v2",
+  "private": true,
+  "scripts": {
+    "infra:up":   "docker-compose up postgres redis nats -d",
+    "infra:down": "docker-compose stop postgres redis nats",
+    "install:all": "npm --prefix services/api-gateway install & npm --prefix services/auth-service install & npm --prefix services/user-service install & npm --prefix services/product-service install & npm --prefix services/order-service install & npm --prefix services/inventory-service install & npm --prefix services/payment-service install & npm --prefix services/kitchen-service install & npm --prefix services/notification-service install & npm --prefix services/analytics-service install & npm --prefix frontend install",
+    "dev": "concurrently --kill-others-on-fail --prefix-colors \"bgCyan.black,bgGreen.black,bgYellow.black,bgBlue.white,bgMagenta.white,bgRed.white,bgWhite.black,bgGray.white,cyan,green,bgBlue.white\" --names \"GATEWAY,AUTH,USER,PRODUCT,ORDERS,INVENTORY,PAYMENT,KITCHEN,ANALYTICS,NOTIF,FRONTEND\" \"npm --prefix services/api-gateway run start:dev\" \"npm --prefix services/auth-service run start:dev\" \"npm --prefix services/user-service run start:dev\" \"npm --prefix services/product-service run start:dev\" \"npm --prefix services/order-service run start:dev\" \"npm --prefix services/inventory-service run start:dev\" \"npm --prefix services/payment-service run start:dev\" \"npm --prefix services/kitchen-service run start:dev\" \"npm --prefix services/analytics-service run start:dev\" \"npm --prefix services/notification-service run start:dev\" \"npm --prefix frontend run dev\""
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.0"
+  }
+}

@@ -1,0 +1,82 @@
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { Order, OrderStatus, OrderType, PaymentStatus } from './entities/order.entity';
+import { OrderItem } from './entities/order-item.entity';
+import { CreateOrderDto, UpdateOrderStatusDto, OrderFilterDto } from './dto/order.dto';
+
+@Injectable()
+export class OrdersService {
+  constructor(
+    @InjectRepository(Order) private readonly orderRepo: Repository<Order>,
+    @InjectRepository(OrderItem) private readonly itemRepo: Repository<OrderItem>,
+  ) {}
+
+  async create(tenantId: string, dto: CreateOrderDto) {
+    const count = await this.orderRepo.count({ where: { tenantId } });
+    const orderNumber = `ORD-${new Date().toISOString().slice(0,10).replace(/-/g,'')}-${String(count+1).padStart(4,'0')}`;
+    const subtotal = dto.items.reduce((a, i) => a + i.unitPrice * i.quantity, 0);
+    const tax = subtotal * 0.19;
+    const discount = dto.discount || 0;
+    const total = subtotal + tax - discount;
+    const order = this.orderRepo.create({
+      tenantId, orderNumber, type: dto.type,
+      tableNumber: dto.tableNumber, customerId: dto.customerId,
+      waiterId: dto.waiterId, waiterName: dto.waiterName, notes: dto.notes,
+      subtotal, tax, discount, total,
+      items: dto.items.map(i => this.itemRepo.create({ ...i, subtotal: i.unitPrice * i.quantity })),
+    });
+    return this.orderRepo.save(order);
+  }
+
+  async findAll(tenantId: string, filters: OrderFilterDto) {
+    const { status, type, tableNumber, page = 1, limit = 50 } = filters;
+    const qb = this.orderRepo.createQueryBuilder('o')
+      .leftJoinAndSelect('o.items', 'items')
+      .where('o.tenantId = :tenantId', { tenantId })
+      .orderBy('o.createdAt', 'DESC');
+    if (status) qb.andWhere('o.status = :status', { status });
+    if (type) qb.andWhere('o.type = :type', { type });
+    if (tableNumber) qb.andWhere('o.tableNumber = :tableNumber', { tableNumber });
+    qb.skip((page - 1) * limit).take(limit);
+    const [data, total] = await qb.getManyAndCount();
+    return { data, total, page, limit };
+  }
+
+  async findOne(tenantId: string, id: string) {
+    const o = await this.orderRepo.findOne({ where: { id, tenantId }, relations: ['items'] });
+    if (!o) throw new NotFoundException('Order not found');
+    return o;
+  }
+
+  async getActive(tenantId: string) {
+    return this.orderRepo.find({
+      where: [
+        { tenantId, status: OrderStatus.PENDING },
+        { tenantId, status: OrderStatus.CONFIRMED },
+        { tenantId, status: OrderStatus.PREPARING },
+        { tenantId, status: OrderStatus.READY },
+      ],
+      relations: ['items'], order: { createdAt: 'ASC' },
+    });
+  }
+
+  async updateStatus(tenantId: string, id: string, dto: UpdateOrderStatusDto) {
+    const order = await this.findOne(tenantId, id);
+    const allowed: Record<OrderStatus, OrderStatus[]> = {
+      [OrderStatus.PENDING]:   [OrderStatus.CONFIRMED, OrderStatus.CANCELLED],
+      [OrderStatus.CONFIRMED]: [OrderStatus.PREPARING, OrderStatus.CANCELLED],
+      [OrderStatus.PREPARING]: [OrderStatus.READY, OrderStatus.CANCELLED],
+      [OrderStatus.READY]:     [OrderStatus.DELIVERED, OrderStatus.PAID, OrderStatus.CANCELLED],
+      [OrderStatus.DELIVERED]: [OrderStatus.PAID],
+      [OrderStatus.PAID]:      [],
+      [OrderStatus.CANCELLED]: [],
+    };
+    if (!allowed[order.status]?.includes(dto.status))
+      throw new BadRequestException(`Cannot transition from ${order.status} to ${dto.status}`);
+    order.status = dto.status;
+    if (dto.status === OrderStatus.CANCELLED) order.cancelReason = dto.reason;
+    if (dto.status === OrderStatus.PAID) order.paymentStatus = PaymentStatus.PAID;
+    return this.orderRepo.save(order);
+  }
+}

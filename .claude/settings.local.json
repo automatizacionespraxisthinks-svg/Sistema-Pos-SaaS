@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -c \":*)",
+      "Bash(pandoc \"C:\\\\Users\\\\fredd\\\\OneDrive\\\\Documentos\\\\PRAXIS Automatizaciones\\\\Softwares\\\\Sistema POS\\\\Pos Saas Technical Design.docx\" -o /tmp/pos_saas_design.md)",
+      "Bash(cd /c/Users/fredd/OneDrive/Documentos/PRAXIS Automatizaciones/Softwares/pos-saas-v2/frontend)",
+      "Bash(python3 \"C:\\\\Users\\\\fredd\\\\AppData\\\\Roaming\\\\Claude\\\\local-agent-mode-sessions\\\\skills-plugin\\\\d3701a5d-6b59-4d4e-b7cf-581d68c9ffc5\\\\36bd15ae-9efc-4437-ad56-895c98fc2541\\\\skills\\\\docx\\\\scripts\\\\office\\\\unpack.py\" \"C:\\\\Users\\\\fredd\\\\OneDrive\\\\Documentos\\\\PRAXIS Automatizaciones\\\\Softwares\\\\Sistema POS\\\\Pos Saas Technical Design.docx\" /tmp/pos_saas_unpacked/)",
+      "Bash(for service:*)",
+      "Bash(do echo:*)",
+      "Bash(pip install:*)",
+      "Bash(python3 /tmp/extract_docx.py)",
+      "Bash(python3 -c \"import tempfile; print\\(tempfile.gettempdir\\(\\)\\)\")",
+      "Bash(python3 \"C:\\\\Users\\\\fredd\\\\AppData\\\\Local\\\\Temp\\\\extract_docx.py\")",
+      "Bash(\"C:\\\\Users\\\\fredd\\\\AppData\\\\Local\\\\Temp\\\\pos_saas_text.txt\")",
+      "Bash(grep -l start:dev C:/Users/fredd/OneDrive/Documentos/PRAXIS Automatizaciones/Softwares/pos-saas-v2/services/*/package.json)",
+      "Bash(cd /c/Users/fredd/OneDrive/Documentos/PRAXIS Automatizaciones/Softwares)",
+      "Bash(pandoc --track-changes=all \"C:/Users/fredd/OneDrive/Documentos/PRAXIS Automatizaciones/Softwares/simulador_pos_restaurante.docx\" -o \"/c/tmp/simulador_pos_restaurante.md\")",
+      "Bash(python3 /c/tmp/read_docx.py)"
+    ]
+  }
+}
