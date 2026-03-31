@@ -1,8 +1,8 @@
 const http = require('http');
 
-const TENANT = 'tenant-demo-001';
-const AUTH   = 'http://localhost:3001';
-const PROD   = 'http://localhost:3003';
+const TENANT = process.env.TENANT_ID  || 'tenant-demo-001';
+const AUTH   = process.env.AUTH_URL   || 'http://localhost:3001';
+const PROD   = process.env.PROD_URL   || 'http://localhost:3003';
 
 function req(base, method, path, body, headers = {}) {
   return new Promise((res, rej) => {
