@@ -1,9 +1,10 @@
 import axios from 'axios';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
-
+// Relative base URL — requests go to whatever host served the page.
+// In production: Nginx proxies /api/* → api-gateway:3000
+// In local dev:  Next.js rewrites /api/* → http://localhost:3000 (see next.config.js)
 export const api = axios.create({
-  baseURL: `${API_URL}/api`,
+  baseURL: '/api',
   headers: { 'Content-Type': 'application/json' },
 });
 
