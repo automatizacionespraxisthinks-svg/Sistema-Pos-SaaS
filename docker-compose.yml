@@ -108,6 +108,8 @@ services:
   api-gateway:
     build: { context: ./services/api-gateway }
     container_name: pos_gateway
+    ports:
+      - "3000:3000"   # Expuesto al host para que Nginx del sistema pueda proxearlo
     env_file: ./services/api-gateway/.env.docker
     depends_on:
       - auth-service
@@ -118,28 +120,13 @@ services:
   frontend:
     build: { context: ./frontend }
     container_name: pos_frontend
+    ports:
+      - "3010:3010"   # Expuesto al host para que Nginx del sistema pueda proxearlo
     environment:
-      # Used by Next.js rewrites at runtime (server → api-gateway via Docker network)
+      # Next.js rewrites usan esto en el servidor para llegar al gateway por red Docker
       API_GATEWAY_URL: http://api-gateway:3000
     depends_on: [api-gateway]
     networks: [pos_net]
-
-  # ── NGINX REVERSE PROXY ─────────────────────────────────────────
-  # Exposes port 80 publicly.  Routes:
-  #   /api/*  →  api-gateway:3000
-  #   /*      →  frontend:3010
-  nginx:
-    image: nginx:1.25-alpine
-    container_name: pos_nginx
-    ports:
-      - "80:80"
-    volumes:
-      - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-    depends_on:
-      - frontend
-      - api-gateway
-    networks: [pos_net]
-    restart: unless-stopped
 
 networks:
   pos_net:
