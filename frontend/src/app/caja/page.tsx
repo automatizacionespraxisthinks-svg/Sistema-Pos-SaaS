@@ -7,7 +7,7 @@ import { ordersApi, paymentsApi, fmt } from '@/lib/api';
 import { useAuthStore } from '@/store/auth.store';
 import {
   Receipt, CreditCard, X, CheckCircle,
-  ChefHat, UserCheck, AlertCircle, HandCoins,
+  ChefHat, UserCheck, AlertCircle, Coins,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -467,7 +467,7 @@ export default function CajaPage() {
               {isDineIn && (
                 <div className="space-y-3">
                   <div className="flex items-center gap-2">
-                    <HandCoins size={16} className="text-emerald-600 flex-none" />
+                    <Coins size={16} className="text-emerald-600 flex-none" />
                     <p className="text-sm font-semibold text-slate-800">
                       Propina para{selectedOrder.waiterName ? `: ${selectedOrder.waiterName}` : ' el mesero'}
                     </p>

@@ -7,7 +7,7 @@ import {
 } from 'recharts';
 import {
   TrendingUp, TrendingDown, DollarSign, ShoppingCart,
-  Receipt, Percent, ChevronLeft, ChevronRight, FileDown, Calendar, HandCoins,
+  Receipt, Percent, ChevronLeft, ChevronRight, FileDown, Calendar, Coins,
 } from 'lucide-react';
 import { format, addDays, addWeeks, addMonths, parseISO, startOfWeek, endOfWeek } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -392,7 +392,7 @@ export default function AnalyticsPage() {
           <KPICard
             title="Propinas"
             value={fmt(overview?.totalTips ?? 0)}
-            icon={HandCoins}
+            icon={Coins}
             color="bg-teal-100 text-teal-600"
           />
           <KPICard
@@ -535,7 +535,7 @@ export default function AnalyticsPage() {
                   {paymentMethods.some(p => p.totalTips > 0) && (
                     <div className="pt-1 border-t border-slate-100 flex items-center justify-between text-xs">
                       <span className="text-teal-700 font-medium flex items-center gap-1">
-                        <HandCoins size={12} /> Total propinas
+                        <Coins size={12} /> Total propinas
                       </span>
                       <span className="text-teal-700 font-semibold">
                         {fmt(paymentMethods.reduce((s, p) => s + (p.totalTips ?? 0), 0))}
