@@ -2,7 +2,7 @@
 node_modules/
 .pnp
 .pnp.js
-
+.claude/
 # ─── Lock files (generated locally, avoid cross-OS conflicts in Docker) ───────
 package-lock.json
 yarn.lock

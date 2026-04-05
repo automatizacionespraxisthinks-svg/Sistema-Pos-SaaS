@@ -1,7 +1,7 @@
-import { Controller, Get, Post, Patch, Body, Param, Query, Headers } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Put, Body, Param, Query, Headers } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { OrdersService } from './orders.service';
-import { CreateOrderDto, UpdateOrderStatusDto, OrderFilterDto } from './dto/order.dto';
+import { CreateOrderDto, UpdateOrderStatusDto, OrderFilterDto, UpdateOrderItemsDto } from './dto/order.dto';
 @ApiTags('Orders') @ApiBearerAuth()
 @Controller('orders')
 export class OrdersController {
@@ -11,5 +11,6 @@ export class OrdersController {
   @Get('active') getActive(@Headers('x-tenant-id') tid: string) { return this.svc.getActive(tid); }
   @Get(':id') findOne(@Headers('x-tenant-id') tid: string, @Param('id') id: string) { return this.svc.findOne(tid, id); }
   @Patch(':id/status') updateStatus(@Headers('x-tenant-id') tid: string, @Param('id') id: string, @Body() dto: UpdateOrderStatusDto) { return this.svc.updateStatus(tid, id, dto); }
+  @Put(':id/items') updateItems(@Headers('x-tenant-id') tid: string, @Param('id') id: string, @Body() dto: UpdateOrderItemsDto) { return this.svc.updateItems(tid, id, dto); }
   @Get('health') health() { return { status: 'ok' }; }
 }

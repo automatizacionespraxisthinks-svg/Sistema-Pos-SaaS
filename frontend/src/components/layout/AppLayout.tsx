@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { Menu } from 'lucide-react';
 import Sidebar from './Sidebar';
 import InstallPWA from '@/components/pwa/InstallPWA';
+import TopLoader from '@/components/ui/TopLoader';
 import { useAuthStore } from '@/store/auth.store';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -21,6 +22,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50">
+      <TopLoader />
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
       <div className="flex-1 flex flex-col overflow-hidden">

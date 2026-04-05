@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Order, OrderStatus, OrderType, PaymentStatus } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
-import { CreateOrderDto, UpdateOrderStatusDto, OrderFilterDto } from './dto/order.dto';
+import { CreateOrderDto, UpdateOrderStatusDto, OrderFilterDto, UpdateOrderItemsDto } from './dto/order.dto';
 
 @Injectable()
 export class OrdersService {
@@ -77,6 +77,31 @@ export class OrdersService {
     order.status = dto.status;
     if (dto.status === OrderStatus.CANCELLED) order.cancelReason = dto.reason;
     if (dto.status === OrderStatus.PAID) order.paymentStatus = PaymentStatus.PAID;
+    return this.orderRepo.save(order);
+  }
+
+  async updateItems(tenantId: string, id: string, dto: UpdateOrderItemsDto) {
+    const order = await this.orderRepo.findOne({ where: { id, tenantId }, relations: ['items'] });
+    if (!order) throw new NotFoundException('Order not found');
+    if (!['pending', 'confirmed'].includes(order.status))
+      throw new BadRequestException('Solo se pueden editar pedidos pendientes o confirmados');
+
+    const subtotal = dto.items.reduce((a, i) => a + i.unitPrice * i.quantity, 0);
+    const tax      = Math.round(subtotal * 0.19);
+    const discount = Number(dto.discount ?? order.discount) || 0;
+    const total    = subtotal + tax - discount;
+
+    if (order.items?.length) await this.itemRepo.remove(order.items);
+
+    const newItems = dto.items.map(i =>
+      this.itemRepo.create({ ...i, subtotal: i.unitPrice * i.quantity }),
+    );
+    order.items    = await this.itemRepo.save(newItems);
+    order.subtotal = subtotal;
+    order.tax      = tax;
+    order.discount = discount;
+    order.total    = total;
+
     return this.orderRepo.save(order);
   }
 }

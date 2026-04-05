@@ -34,10 +34,12 @@ export const fmt = (n: number) =>
   new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(n);
 
 export const authApi = {
-  login:    (email: string, password: string) => api.post('/auth/login', { email, password }),
-  register: (data: any)                       => api.post('/auth/register', data),
-  // Listar usuarios del tenant, opcionalmente filtrados por rol
-  getUsers: (role?: string)                   => api.get('/auth/users', { params: role ? { role } : {} }),
+  login:       (email: string, password: string) => api.post('/auth/login', { email, password }),
+  register:    (data: any)                       => api.post('/auth/register', data),
+  createUser:  (data: any)                       => api.post('/auth/users', data),
+  getUsers:    (role?: string)                   => api.get('/auth/users', { params: role ? { role } : {} }),
+  updateUser:  (id: string, data: any)           => api.patch(`/auth/users/${id}`, data),
+  deleteUser:  (id: string)                      => api.delete(`/auth/users/${id}`),
 };
 export const productsApi = {
   list: (params?: any) => api.get('/products', { params }),
@@ -56,6 +58,7 @@ export const ordersApi = {
   get: (id: string) => api.get(`/orders/${id}`),
   create: (data: any) => api.post('/orders', data),
   updateStatus: (id: string, status: string, reason?: string) => api.patch(`/orders/${id}/status`, { status, reason }),
+  updateItems: (id: string, data: any) => api.put(`/orders/${id}/items`, data),
   getActive: () => api.get('/orders/active'),
 };
 export const inventoryApi = {
@@ -70,6 +73,7 @@ export const paymentsApi = {
   getDailySummary: (date?: string) => api.get('/payments/summary/daily', { params: date ? { date } : {} }),
 };
 export const kitchenApi = {
+  create: (data: any) => api.post('/kitchen/tickets', data),
   getActive: () => api.get('/kitchen/tickets'),
   updateStatus: (id: string, status: string, assignedTo?: string) =>
     api.patch(`/kitchen/tickets/${id}/status`, { status, assignedTo }),

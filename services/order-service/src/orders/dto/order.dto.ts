@@ -35,3 +35,8 @@ export class OrderFilterDto {
   @IsOptional() @Type(() => Number) @IsNumber() page?: number;
   @IsOptional() @Type(() => Number) @IsNumber() limit?: number;
 }
+
+export class UpdateOrderItemsDto {
+  @IsArray() @ValidateNested({ each: true }) @Type(() => CreateOrderItemDto) items: CreateOrderItemDto[];
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) discount?: number;
+}

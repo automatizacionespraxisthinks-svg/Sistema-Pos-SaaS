@@ -1,11 +1,11 @@
-import { Injectable, UnauthorizedException, ConflictException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, ConflictException, NotFoundException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
 import { User } from '../users/entities/user.entity';
 import { RefreshToken } from './entities/refresh-token.entity';
-import { LoginDto, RegisterDto } from './dto/auth.dto';
+import { LoginDto, RegisterDto, RefreshTokenDto, UpdateUserDto } from './dto/auth.dto';
 
 @Injectable()
 export class AuthService {
@@ -52,15 +52,48 @@ export class AuthService {
     } catch { return null; }
   }
 
+  async createUser(tenantId: string, dto: RegisterDto) {
+    if (await this.userRepo.findOne({ where: { email: dto.email } }))
+      throw new ConflictException('Email already registered');
+    const user = this.userRepo.create({
+      ...dto,
+      tenantId,
+      password: await bcrypt.hash(dto.password, 12),
+    });
+    await this.userRepo.save(user);
+    const { password, ...result } = user as any;
+    return result;
+  }
+
   async getUsersByRole(tenantId: string, role?: string) {
-    const where: any = { tenantId, isActive: true };
+    const where: any = { tenantId };
     if (role) where.role = role;
     const users = await this.userRepo.find({
       where,
-      select: ['id', 'firstName', 'lastName', 'role', 'email'],
+      select: ['id', 'firstName', 'lastName', 'role', 'email', 'isActive'],
       order: { firstName: 'ASC' },
     });
     return users;
+  }
+
+  async updateUser(tenantId: string, id: string, dto: UpdateUserDto) {
+    const user = await this.userRepo.findOne({ where: { id, tenantId } });
+    if (!user) throw new NotFoundException('User not found');
+    if (dto.firstName  !== undefined) user.firstName = dto.firstName;
+    if (dto.lastName   !== undefined) user.lastName  = dto.lastName;
+    if (dto.role       !== undefined) user.role      = dto.role;
+    if (dto.isActive   !== undefined) user.isActive  = dto.isActive;
+    await this.userRepo.save(user);
+    const { password, ...result } = user as any;
+    return result;
+  }
+
+  async deleteUser(tenantId: string, id: string) {
+    const user = await this.userRepo.findOne({ where: { id, tenantId } });
+    if (!user) throw new NotFoundException('User not found');
+    user.isActive = false;
+    await this.userRepo.save(user);
+    return { message: 'User deactivated' };
   }
 
   private async tokens(user: User) {

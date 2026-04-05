@@ -1,4 +1,4 @@
-import { IsEmail, IsString, MinLength, IsEnum, IsOptional } from 'class-validator';
+import { IsEmail, IsString, MinLength, IsEnum, IsOptional, IsBoolean } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { UserRole } from '../../users/entities/user.entity';
 export class LoginDto {
@@ -14,3 +14,10 @@ export class RegisterDto {
   @ApiProperty({ required: false }) @IsString() @IsOptional() tenantId?: string;
 }
 export class RefreshTokenDto { @ApiProperty() @IsString() refreshToken: string; }
+
+export class UpdateUserDto {
+  @IsOptional() @IsString() firstName?: string;
+  @IsOptional() @IsString() lastName?: string;
+  @IsOptional() @IsEnum(UserRole) role?: UserRole;
+  @IsOptional() isActive?: boolean;
+}

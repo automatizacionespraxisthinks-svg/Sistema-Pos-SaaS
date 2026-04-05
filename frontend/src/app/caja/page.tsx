@@ -55,7 +55,7 @@ const TIP_PRESETS = [
 
 function printInvoice(
   order: any,
-  payment: { method: PayMethod; tip: number; cashReceived?: number },
+  payment: { method: PayMethod; tip: number; cashReceived?: number; splits?: Split[] },
   cashierName: string,
 ) {
   const win = window.open('', '_blank', 'width=440,height=780');
@@ -167,10 +167,22 @@ function printInvoice(
   </table>
   <div class="divider"></div>
   <div class="payment">
+    ${payment.splits ? `
+      <div style="font-weight:bold;margin-bottom:4px">Cuenta dividida en ${payment.splits.length} partes:</div>
+      <table style="width:100%;font-size:11px">
+        ${payment.splits.map((sp, i) => {
+          const spChange = sp.method === 'cash' && sp.cashReceived
+            ? Math.max(0, Number(sp.cashReceived) - Number(sp.amount)) : 0;
+          return `<tr>
+            <td>Persona ${i + 1} (${methodLabel[sp.method] ?? sp.method})</td>
+            <td style="text-align:right">${fmt(Number(sp.amount))}</td>
+          </tr>${sp.method === 'cash' && sp.cashReceived ? `<tr><td style="color:#555;font-size:10px">  Cambio</td><td style="text-align:right;color:#555;font-size:10px">${fmt(spChange)}</td></tr>` : ''}`;
+        }).join('')}
+      </table>` : `
     <div>Método: <span class="method">${methodLabel[payment.method]}</span></div>
     ${payment.method === 'cash' && payment.cashReceived ? `
       <div>Recibido: ${fmt(payment.cashReceived)}</div>
-      <div><strong>Cambio: ${fmt(change)}</strong></div>` : ''}
+      <div><strong>Cambio: ${fmt(change)}</strong></div>` : ''}`}
   </div>
   <div class="footer">
     <div class="divider"></div>
@@ -185,6 +197,14 @@ function printInvoice(
   win.document.close();
   win.focus();
   setTimeout(() => win.print(), 300);
+}
+
+// ─── tipos split ─────────────────────────────────────────────────────────────
+
+interface Split {
+  amount:       string;
+  method:       PayMethod;
+  cashReceived: string;
 }
 
 // ─── página ───────────────────────────────────────────────────────────────────
@@ -202,6 +222,12 @@ export default function CajaPage() {
   // Propina: null = no elegida aún, -1 = manual, >= 0 = porcentaje elegido
   const [tipPct, setTipPct]             = useState<number | null>(null);
   const [tipCustom, setTipCustom]       = useState('');
+  // Split bill
+  const [splitMode, setSplitMode]       = useState(false);
+  const [splits, setSplits]             = useState<Split[]>([
+    { amount: '', method: 'cash', cashReceived: '' },
+    { amount: '', method: 'cash', cashReceived: '' },
+  ]);
   const qc = useQueryClient();
 
   // ── Pedidos ──────────────────────────────────────────────────────────────────
@@ -250,12 +276,18 @@ export default function CajaPage() {
 
   const processPayment = useMutation({
     mutationFn: async () => {
+      // Determine method for payment record
+      const uniqueMethods = splitMode
+        ? [...new Set(splits.map(s => s.method))]
+        : [payMethod];
+      const method: PayMethod = uniqueMethods.length === 1 ? uniqueMethods[0] as PayMethod : 'cash';
+
       await paymentsApi.process({
         orderId:      selectedOrder.id,
         amount:       orderTotal,
         tip:          tipAmount,
-        method:       payMethod,
-        cashReceived: payMethod === 'cash' && cashReceived ? Number(cashReceived) : undefined,
+        method:       splitMode ? (uniqueMethods.length === 1 ? method : 'cash') : payMethod,
+        cashReceived: !splitMode && payMethod === 'cash' && cashReceived ? Number(cashReceived) : undefined,
       });
       const st = selectedOrder.status;
       if (st === 'delivered' || st === 'ready') {
@@ -265,7 +297,12 @@ export default function CajaPage() {
     onSuccess: () => {
       printInvoice(
         selectedOrder,
-        { method: payMethod, tip: tipAmount, cashReceived: cashReceived ? Number(cashReceived) : undefined },
+        {
+          method:       splitMode ? 'cash' : payMethod,
+          tip:          tipAmount,
+          cashReceived: !splitMode && cashReceived ? Number(cashReceived) : undefined,
+          splits:       splitMode ? splits : undefined,
+        },
         cashierName,
       );
       toast.success(`✅ Pago registrado — ${selectedOrder.orderNumber}`);
@@ -276,13 +313,55 @@ export default function CajaPage() {
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Error al procesar el pago'),
   });
 
+  // ── Split helpers ────────────────────────────────────────────────────────────
+
+  function updateSplit(idx: number, field: keyof Split, value: string) {
+    setSplits(prev => prev.map((s, i) => i === idx ? { ...s, [field]: value } : s));
+  }
+
+  function addSplit() {
+    setSplits(prev => [...prev, { amount: '', method: 'cash', cashReceived: '' }]);
+  }
+
+  function removeSplit(idx: number) {
+    setSplits(prev => prev.filter((_, i) => i !== idx));
+  }
+
+  function distributeEqually() {
+    const perPerson = Math.ceil(grandTotal / splits.length);
+    setSplits(prev => prev.map((s, i) => ({
+      ...s,
+      amount: i === prev.length - 1
+        ? String(grandTotal - perPerson * (prev.length - 1))
+        : String(perPerson),
+    })));
+  }
+
+  const splitTotal     = splits.reduce((s, sp) => s + (Number(sp.amount) || 0), 0);
+  const splitRemaining = grandTotal - splitTotal;
+  const splitValid     = splitMode
+    ? Math.abs(splitRemaining) < 1 && splits.every(sp => Number(sp.amount) > 0)
+    : false;
+  const splitCashOk    = splitMode
+    ? splits.every(sp =>
+        sp.method !== 'cash' ||
+        (!!sp.cashReceived && Number(sp.cashReceived) >= Number(sp.amount))
+      )
+    : false;
+
+  // ── Modal open/reset ──────────────────────────────────────────────────────────
+
   function openModal(order: any) {
     setSelected(order);
     setPayMethod('cash');
     setCashReceived('');
-    // dine_in: obligatorio elegir → null. Para llevar: ya = 0 (sin propina)
     setTipPct(order.type === 'dine_in' ? null : 0);
     setTipCustom('');
+    setSplitMode(false);
+    setSplits([
+      { amount: '', method: 'cash', cashReceived: '' },
+      { amount: '', method: 'cash', cashReceived: '' },
+    ]);
   }
 
   function resetModal() {
@@ -291,6 +370,11 @@ export default function CajaPage() {
     setCashReceived('');
     setTipPct(null);
     setTipCustom('');
+    setSplitMode(false);
+    setSplits([
+      { amount: '', method: 'cash', cashReceived: '' },
+      { amount: '', method: 'cash', cashReceived: '' },
+    ]);
   }
 
   // ── UI ────────────────────────────────────────────────────────────────────────
@@ -547,46 +631,150 @@ export default function CajaPage() {
                 )}
               </div>
 
-              {/* Método de pago */}
-              <div>
-                <label className="text-sm font-semibold text-slate-700 mb-2 block">Método de pago</label>
-                <div className="grid grid-cols-3 gap-2">
-                  {(['cash', 'card', 'transfer'] as PayMethod[]).map(m => (
-                    <button key={m}
-                      onClick={() => { setPayMethod(m); setCashReceived(''); }}
-                      className={`py-3 rounded-xl text-sm font-medium flex flex-col items-center gap-1 transition-colors ${
-                        payMethod === m ? 'bg-primary-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                      }`}>
-                      <span className="text-lg">{m === 'cash' ? '💵' : m === 'card' ? '💳' : '🏦'}</span>
-                      <span>{m === 'cash' ? 'Efectivo' : m === 'card' ? 'Tarjeta' : 'Transferencia'}</span>
-                    </button>
-                  ))}
-                </div>
+              {/* Toggle dividir cuenta */}
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-semibold text-slate-700">
+                  {splitMode ? '🔀 Dividir cuenta' : 'Método de pago'}
+                </span>
+                <button
+                  onClick={() => setSplitMode(v => !v)}
+                  className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors ${
+                    splitMode
+                      ? 'bg-violet-100 text-violet-700 hover:bg-violet-200'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}>
+                  {splitMode ? '✕ Pago único' : '⇄ Dividir cuenta'}
+                </button>
               </div>
 
-              {/* Efectivo recibido */}
-              {payMethod === 'cash' && (
-                <div>
-                  <label className="text-sm font-semibold text-slate-700 mb-1 block">Efectivo recibido</label>
-                  <input
-                    type="number" inputMode="numeric"
-                    className="input text-xl text-center font-bold tracking-wide"
-                    placeholder="$ 0"
-                    value={cashReceived}
-                    onChange={e => setCashReceived(e.target.value)}
-                  />
-                  {cashReceived && Number(cashReceived) >= grandTotal && (
-                    <div className="mt-2 bg-green-50 border border-green-200 rounded-lg p-3 text-center">
-                      <p className="text-xs text-green-600 font-medium">Cambio a devolver</p>
-                      <p className="text-2xl font-bold text-green-700">{fmt(changeAmt)}</p>
+              {/* ── MODO DIVIDIR CUENTA ────────────────────────────────────────── */}
+              {splitMode ? (
+                <div className="space-y-3">
+
+                  {/* Distribución rápida */}
+                  <button
+                    onClick={distributeEqually}
+                    className="w-full text-xs font-medium text-violet-600 hover:text-violet-800 py-1.5 border border-violet-200 rounded-lg hover:bg-violet-50 transition-colors">
+                    ↔ Distribuir en partes iguales ({splits.length} personas)
+                  </button>
+
+                  {/* Splits */}
+                  {splits.map((sp, idx) => (
+                    <div key={idx} className="border border-slate-200 rounded-xl p-3 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-slate-600">Persona {idx + 1}</span>
+                        {splits.length > 2 && (
+                          <button
+                            onClick={() => removeSplit(idx)}
+                            className="text-red-400 hover:text-red-600 text-xs">✕</button>
+                        )}
+                      </div>
+
+                      {/* Amount */}
+                      <input
+                        type="number" inputMode="numeric" placeholder="$ Monto"
+                        value={sp.amount}
+                        onChange={e => updateSplit(idx, 'amount', e.target.value)}
+                        className="input text-center font-bold"
+                      />
+
+                      {/* Method */}
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {(['cash', 'card', 'transfer'] as PayMethod[]).map(m => (
+                          <button key={m}
+                            onClick={() => updateSplit(idx, 'method', m)}
+                            className={`py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                              sp.method === m ? 'bg-primary-600 text-white' : 'bg-slate-100 text-slate-600'
+                            }`}>
+                            {m === 'cash' ? '💵 Efectivo' : m === 'card' ? '💳 Tarjeta' : '🏦 Transfer'}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Cash received for this split */}
+                      {sp.method === 'cash' && sp.amount && (
+                        <div>
+                          <input
+                            type="number" inputMode="numeric" placeholder="$ Recibido"
+                            value={sp.cashReceived}
+                            onChange={e => updateSplit(idx, 'cashReceived', e.target.value)}
+                            className="input text-center text-sm"
+                          />
+                          {sp.cashReceived && Number(sp.cashReceived) >= Number(sp.amount) && (
+                            <p className="text-xs text-green-600 text-center mt-1 font-medium">
+                              Cambio: {fmt(Math.max(0, Number(sp.cashReceived) - Number(sp.amount)))}
+                            </p>
+                          )}
+                          {sp.cashReceived && Number(sp.cashReceived) < Number(sp.amount) && (
+                            <p className="text-xs text-red-500 text-center mt-1">
+                              Faltan {fmt(Number(sp.amount) - Number(sp.cashReceived))}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+
+                  {/* Add person */}
+                  <button
+                    onClick={addSplit}
+                    className="w-full py-2 border border-dashed border-slate-300 rounded-xl text-sm text-slate-500 hover:border-primary-400 hover:text-primary-600 transition-colors">
+                    + Agregar persona
+                  </button>
+
+                  {/* Running total */}
+                  <div className={`rounded-xl p-3 flex items-center justify-between text-sm ${
+                    Math.abs(splitRemaining) < 1 ? 'bg-green-50 border border-green-200' : 'bg-amber-50 border border-amber-200'
+                  }`}>
+                    <span className={Math.abs(splitRemaining) < 1 ? 'text-green-700' : 'text-amber-700'}>
+                      {Math.abs(splitRemaining) < 1 ? '✓ Total cubierto' : splitRemaining > 0 ? `Falta asignar` : 'Excede el total'}
+                    </span>
+                    <span className={`font-bold ${Math.abs(splitRemaining) < 1 ? 'text-green-700' : 'text-amber-700'}`}>
+                      {Math.abs(splitRemaining) < 1 ? fmt(grandTotal) : fmt(Math.abs(splitRemaining))}
+                    </span>
+                  </div>
+                </div>
+
+              ) : (
+                <>
+                  {/* ── PAGO ÚNICO ──────────────────────────────────────────────── */}
+                  <div className="grid grid-cols-3 gap-2">
+                    {(['cash', 'card', 'transfer'] as PayMethod[]).map(m => (
+                      <button key={m}
+                        onClick={() => { setPayMethod(m); setCashReceived(''); }}
+                        className={`py-3 rounded-xl text-sm font-medium flex flex-col items-center gap-1 transition-colors ${
+                          payMethod === m ? 'bg-primary-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        }`}>
+                        <span className="text-lg">{m === 'cash' ? '💵' : m === 'card' ? '💳' : '🏦'}</span>
+                        <span>{m === 'cash' ? 'Efectivo' : m === 'card' ? 'Tarjeta' : 'Transferencia'}</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  {payMethod === 'cash' && (
+                    <div>
+                      <label className="text-sm font-semibold text-slate-700 mb-1 block">Efectivo recibido</label>
+                      <input
+                        type="number" inputMode="numeric"
+                        className="input text-xl text-center font-bold tracking-wide"
+                        placeholder="$ 0"
+                        value={cashReceived}
+                        onChange={e => setCashReceived(e.target.value)}
+                      />
+                      {cashReceived && Number(cashReceived) >= grandTotal && (
+                        <div className="mt-2 bg-green-50 border border-green-200 rounded-lg p-3 text-center">
+                          <p className="text-xs text-green-600 font-medium">Cambio a devolver</p>
+                          <p className="text-2xl font-bold text-green-700">{fmt(changeAmt)}</p>
+                        </div>
+                      )}
+                      {cashReceived && Number(cashReceived) < grandTotal && (
+                        <p className="text-xs text-red-500 mt-1 text-center">
+                          Faltan {fmt(grandTotal - Number(cashReceived))}
+                        </p>
+                      )}
                     </div>
                   )}
-                  {cashReceived && Number(cashReceived) < grandTotal && (
-                    <p className="text-xs text-red-500 mt-1 text-center">
-                      Faltan {fmt(grandTotal - Number(cashReceived))}
-                    </p>
-                  )}
-                </div>
+                </>
               )}
 
               {/* Alerta pedido no cobrable */}
@@ -605,7 +793,10 @@ export default function CajaPage() {
               </button>
               <button
                 onClick={() => processPayment.mutate()}
-                disabled={processPayment.isPending || !canPay || !cashOk || !tipSelected}
+                disabled={
+                processPayment.isPending || !canPay || !tipSelected ||
+                (splitMode ? (!splitValid || !splitCashOk) : !cashOk)
+              }
                 className="flex-1 btn-primary py-3 flex items-center justify-center gap-2 text-base disabled:opacity-50 disabled:cursor-not-allowed">
                 <Receipt size={18} />
                 {processPayment.isPending ? 'Procesando...' : 'Cobrar y emitir factura'}

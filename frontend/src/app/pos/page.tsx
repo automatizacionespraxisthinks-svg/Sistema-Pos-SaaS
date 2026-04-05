@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import AppLayout from '@/components/layout/AppLayout';
-import { productsApi, categoriesApi, ordersApi, authApi, fmt } from '@/lib/api';
+import { productsApi, categoriesApi, ordersApi, kitchenApi, authApi, fmt } from '@/lib/api';
 import { useCartStore } from '@/store/cart.store';
 import { useRoleGuard } from '@/hooks/useRoleGuard';
 import {
@@ -67,6 +67,13 @@ export default function POSPage() {
       });
       // Confirmar de inmediato → va a cocina
       await ordersApi.updateStatus(res.data.id, 'confirmed');
+      // Crear ticket en cocina
+      await kitchenApi.create({
+        orderId:     res.data.id,
+        orderNumber: res.data.orderNumber,
+        tableNumber: tableNumber || undefined,
+        items: items.map(i => ({ productName: i.productName, quantity: i.quantity, notes: i.notes })),
+      });
       return res;
     },
     onSuccess: (res) => {
@@ -248,8 +255,20 @@ export default function POSPage() {
                   <button key={p.id}
                     onClick={() => addItem({ productId: p.id, productName: p.name, unitPrice: Number(p.price) })}
                     className="bg-white rounded-xl border border-slate-200 p-3 text-left hover:border-primary-600 hover:shadow-md transition-all active:scale-95">
-                    <div className="w-full aspect-square bg-slate-100 rounded-lg mb-2 flex items-center justify-center text-2xl md:text-3xl">
-                      {p.category?.name === 'Bebidas' ? '☕' : p.category?.name === 'Postres' ? '🍰' : p.category?.name === 'Entradas' ? '🥗' : '🍽️'}
+                    <div className="w-full aspect-square bg-slate-100 rounded-lg mb-2 flex items-center justify-center text-2xl md:text-3xl overflow-hidden">
+                      {p.imageUrl ? (
+                        <img
+                          src={p.imageUrl}
+                          alt={p.name}
+                          className="w-full h-full object-cover"
+                          onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                        />
+                      ) : (
+                        p.category?.name === 'Bebidas' ? '☕'
+                        : p.category?.name === 'Postres' ? '🍰'
+                        : p.category?.name === 'Entradas' ? '🥗'
+                        : '🍽️'
+                      )}
                     </div>
                     <p className="text-xs md:text-sm font-semibold text-slate-900 truncate leading-tight">{p.name}</p>
                     <p className="text-primary-600 font-bold text-xs md:text-sm mt-0.5">{fmt(Number(p.price))}</p>
