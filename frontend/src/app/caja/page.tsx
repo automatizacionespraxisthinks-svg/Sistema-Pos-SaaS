@@ -278,7 +278,7 @@ export default function CajaPage() {
     mutationFn: async () => {
       // Determine method for payment record
       const uniqueMethods = splitMode
-        ? [...new Set(splits.map(s => s.method))]
+        ? Array.from(new Set(splits.map(s => s.method)))
         : [payMethod];
       const method: PayMethod = uniqueMethods.length === 1 ? uniqueMethods[0] as PayMethod : 'cash';
 
