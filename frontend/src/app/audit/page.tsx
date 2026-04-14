@@ -144,7 +144,7 @@ export default function AuditPage() {
       page,
       limit: LIMIT,
     }).then(r => r.data),
-    keepPreviousData: true,
+    placeholderData: (prev: any) => prev,
   });
 
   const logs: AuditLog[]  = data?.data  ?? [];
