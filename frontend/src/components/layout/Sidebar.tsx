@@ -10,18 +10,18 @@ import { useAuthStore } from '@/store/auth.store';
 import { TenantBranding } from '@/hooks/useTenantTheme';
 
 const ALL_NAV = [
-  { href: '/pos',       label: 'Punto de Venta', icon: ShoppingCart, roles: ['admin','super_admin','cashier','waiter'] },
-  { href: '/caja',      label: 'Caja',            icon: Landmark,      roles: ['admin','super_admin','cashier'] },
-  { href: '/caja/cierre', label: 'Cierre de día',  icon: BarChart2,     roles: ['admin','super_admin'] },
-  { href: '/orders',    label: 'Pedidos',         icon: ClipboardList, roles: ['admin','super_admin','cashier','waiter','viewer'] },
-  { href: '/kitchen',   label: 'Cocina',          icon: ChefHat,       roles: ['admin','super_admin','kitchen'] },
-  { href: '/propinas',  label: 'Mis propinas',    icon: Coins,         roles: ['waiter'] },
-  { href: '/inventory', label: 'Inventario',      icon: Boxes,         roles: ['admin','super_admin','viewer'] },
-  { href: '/products',  label: 'Productos',       icon: Package,       roles: ['admin','super_admin'] },
-  { href: '/dashboard', label: 'Dashboard',       icon: BarChart3,     roles: ['admin','super_admin','viewer'] },
-  { href: '/analytics', label: 'Analítica',       icon: LineChart,     roles: ['admin','super_admin','viewer'] },
-  { href: '/admin',     label: 'Administración',  icon: Settings,      roles: ['admin','super_admin'] },
-  { href: '/audit',     label: 'Auditoría',       icon: ShieldCheck,   roles: ['admin','super_admin'] },
+  { href: '/pos',         label: 'Punto de Venta', icon: ShoppingCart, roles: ['admin','super_admin','cashier','waiter'] },
+  { href: '/orders',      label: 'Pedidos',         icon: ClipboardList, roles: ['admin','super_admin','cashier','waiter','viewer'] },
+  { href: '/caja',        label: 'Caja',            icon: Landmark,      roles: ['admin','super_admin','cashier'] },
+  { href: '/caja/cierre', label: 'Cierre de día',   icon: BarChart2,     roles: ['admin','super_admin'] },
+  { href: '/kitchen',     label: 'Cocina',          icon: ChefHat,       roles: ['admin','super_admin','kitchen'] },
+  { href: '/propinas',    label: 'Mis propinas',    icon: Coins,         roles: ['waiter'] },
+  { href: '/products',    label: 'Productos',       icon: Package,       roles: ['admin','super_admin'] },
+  { href: '/inventory',   label: 'Inventario',      icon: Boxes,         roles: ['admin','super_admin','viewer'] },
+  { href: '/dashboard',   label: 'Dashboard',       icon: BarChart3,     roles: ['admin','super_admin','viewer'] },
+  { href: '/analytics',   label: 'Analítica',       icon: LineChart,     roles: ['admin','super_admin','viewer'] },
+  { href: '/audit',       label: 'Auditoría',       icon: ShieldCheck,   roles: ['admin','super_admin'] },
+  { href: '/admin',       label: 'Administración',  icon: Settings,      roles: ['admin','super_admin'] },
 ];
 
 interface Props {
@@ -59,7 +59,7 @@ export default function Sidebar({ open, onClose, tenant }: Props) {
       {/* Sidebar */}
       <aside className={`
         fixed lg:static inset-y-0 left-0 z-50
-        w-64 bg-slate-900 text-white flex flex-col h-full
+        w-64 bg-slate-900 text-white flex flex-col h-screen min-h-0
         transform transition-transform duration-300 ease-in-out
         ${open ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
       `}>
@@ -89,12 +89,12 @@ export default function Sidebar({ open, onClose, tenant }: Props) {
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
+        <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto min-h-0 scrollbar-thin">
           {nav.map(({ href, label, icon: Icon }) => {
             const active = pathname.startsWith(href);
             return (
               <Link key={href} href={href} onClick={handleNavClick}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
                   active ? 'bg-primary-600 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'
                 }`}>
                 <Icon size={18} className="flex-none" />{label}
