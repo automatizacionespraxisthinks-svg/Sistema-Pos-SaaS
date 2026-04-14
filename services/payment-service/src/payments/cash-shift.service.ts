@@ -2,8 +2,9 @@ import { Injectable, BadRequestException, NotFoundException } from '@nestjs/comm
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between } from 'typeorm';
 import { CashShift } from './cash-shift.entity';
+import { CashMovement } from './cash-movement.entity';
 import { auditLog } from './audit-client';
-import { IsNumber, IsOptional, IsString } from 'class-validator';
+import { IsNumber, IsOptional, IsString, IsEnum, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class OpenShiftDto {
@@ -17,6 +18,13 @@ export class CloseShiftDto {
   @IsOptional() @IsString() notes?: string;
 }
 
+export class AddMovementDto {
+  @IsString() cashierName: string;
+  @IsEnum(['income', 'expense']) type: 'income' | 'expense';
+  @Type(() => Number) @IsNumber() @Min(0.01) amount: number;
+  @IsString() reason: string;
+}
+
 function dayRange() {
   const start = new Date(); start.setHours(0, 0, 0, 0);
   const end   = new Date(); end.setHours(23, 59, 59, 999);
@@ -26,8 +34,8 @@ function dayRange() {
 @Injectable()
 export class CashShiftService {
   constructor(
-    @InjectRepository(CashShift)
-    private readonly repo: Repository<CashShift>,
+    @InjectRepository(CashShift)    private readonly repo:    Repository<CashShift>,
+    @InjectRepository(CashMovement) private readonly movRepo: Repository<CashMovement>,
   ) {}
 
   /** Abre un turno para un cajero — sólo puede tener uno abierto a la vez */
@@ -69,7 +77,12 @@ export class CashShiftService {
     });
     if (!shift) throw new NotFoundException('No tienes un turno abierto.');
 
-    const expectedCash  = Number(shift.initialCash) + Number(shift.cashSales);
+    // Incluir movimientos manuales en el efectivo esperado
+    const movements    = await this.movRepo.find({ where: { tenantId, shiftId: shift.id } });
+    const totalIncomes  = movements.filter(m => m.type === 'income').reduce((a, m) => a + Number(m.amount), 0);
+    const totalExpenses = movements.filter(m => m.type === 'expense').reduce((a, m) => a + Number(m.amount), 0);
+
+    const expectedCash  = Number(shift.initialCash) + Number(shift.cashSales) + totalIncomes - totalExpenses;
     const discrepancy   = Number(dto.countedCash) - expectedCash;
 
     shift.countedCash  = dto.countedCash;
@@ -96,11 +109,53 @@ export class CashShiftService {
         cashSales:    closed.cashSales,
         cardSales:    closed.cardSales,
         totalTips:    closed.totalTips,
+        totalIncomes,
+        totalExpenses,
       },
       description: `Cierre de turno: ${closed.cashierName} — Esperado $${closed.expectedCash} / Contado $${closed.countedCash} / Descuadre $${closed.discrepancy}`,
     });
 
     return closed;
+  }
+
+  /** Registra un movimiento manual (ingreso/egreso) en el turno activo */
+  async addMovement(tenantId: string, cashierId: string, dto: AddMovementDto): Promise<CashMovement> {
+    const shift = await this.repo.findOne({ where: { tenantId, cashierId, status: 'open' } });
+    if (!shift) throw new NotFoundException('No tienes un turno abierto.');
+
+    const movement = this.movRepo.create({
+      tenantId,
+      shiftId:     shift.id,
+      cashierId,
+      cashierName: dto.cashierName,
+      type:        dto.type,
+      amount:      dto.amount,
+      reason:      dto.reason,
+    });
+    const saved = await this.movRepo.save(movement);
+
+    auditLog({
+      tenantId,
+      userId:    cashierId,
+      module:    'caja',
+      action:    dto.type === 'income' ? 'CASH_INCOME' : 'CASH_EXPENSE',
+      entityId:  saved.id,
+      entityType: 'CashMovement',
+      newValue:  { type: dto.type, amount: dto.amount, reason: dto.reason, shiftId: shift.id },
+      description: `Movimiento ${dto.type === 'income' ? 'ingreso' : 'egreso'}: $${dto.amount} — ${dto.reason}`,
+    });
+
+    return saved;
+  }
+
+  /** Devuelve los movimientos del turno activo del cajero */
+  async getMovements(tenantId: string, cashierId: string): Promise<CashMovement[]> {
+    const shift = await this.repo.findOne({ where: { tenantId, cashierId, status: 'open' } });
+    if (!shift) return [];
+    return this.movRepo.find({
+      where: { tenantId, shiftId: shift.id },
+      order: { createdAt: 'ASC' },
+    });
   }
 
   /** Obtiene el turno activo del cajero (null si no tiene) */
@@ -157,7 +212,7 @@ export class CashShiftService {
     });
     if (!shift) return; // no hay turno abierto — no bloqueamos el pago
 
-    if (method === 'cash')     shift.cashSales     = Number(shift.cashSales)     + amount;
+    if (method === 'cash')      shift.cashSales     = Number(shift.cashSales)     + amount;
     else if (method === 'card') shift.cardSales     = Number(shift.cardSales)     + amount;
     else                        shift.transferSales = Number(shift.transferSales) + amount;
 

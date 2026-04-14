@@ -22,7 +22,8 @@
       "Bash(echo \"--- $svc ---\")",
       "Bash(done)",
       "Bash(ls -la \"C:\\\\Users\\\\fredd\\\\OneDrive\\\\Documentos\\\\PRAXIS Automatizaciones\\\\Softwares\\\\pos-saas-v2\\\\frontend\\\\tailwind.config.\"*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(docker compose:*)"
     ]
   }
 }

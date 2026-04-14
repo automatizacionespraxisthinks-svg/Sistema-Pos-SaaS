@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import AppLayout from '@/components/layout/AppLayout';
 import { productsApi, categoriesApi, ordersApi, kitchenApi, authApi, fmt } from '@/lib/api';
@@ -26,6 +26,15 @@ export default function POSPage() {
     waiterId, waiterName, setWaiter,
     subtotal, tax, total, discount,
   } = useCartStore();
+
+  // Pre-fill table from URL param (?table=X — viene del mapa de mesas)
+  // Usamos window.location.search en vez de useSearchParams() para evitar
+  // el requisito de <Suspense> en Next.js 14 durante el prerendering.
+  useEffect(() => {
+    const t = new URLSearchParams(window.location.search).get('table');
+    if (t) { setTable(t); setType('dine_in'); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Track which item has the notes field open
   const [noteOpen, setNoteOpen] = useState<Record<string, boolean>>({});

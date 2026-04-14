@@ -5,18 +5,21 @@ import { usePathname, useRouter } from 'next/navigation';
 import {
   ShoppingCart, Package, ClipboardList, ChefHat,
   BarChart3, LineChart, Settings, LogOut, Boxes, X, Landmark, BarChart2, Coins, ShieldCheck,
+  LayoutGrid, BookOpen,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import { TenantBranding } from '@/hooks/useTenantTheme';
 
 const ALL_NAV = [
   { href: '/pos',         label: 'Punto de Venta', icon: ShoppingCart, roles: ['admin','super_admin','cashier','waiter'] },
+  { href: '/mesas',       label: 'Mesas',           icon: LayoutGrid,   roles: ['admin','super_admin','cashier','waiter'] },
   { href: '/orders',      label: 'Pedidos',         icon: ClipboardList, roles: ['admin','super_admin','cashier','waiter','viewer'] },
   { href: '/caja',        label: 'Caja',            icon: Landmark,      roles: ['admin','super_admin','cashier'] },
   { href: '/caja/cierre', label: 'Cierre de día',   icon: BarChart2,     roles: ['admin','super_admin'] },
   { href: '/kitchen',     label: 'Cocina',          icon: ChefHat,       roles: ['admin','super_admin','kitchen'] },
   { href: '/propinas',    label: 'Mis propinas',    icon: Coins,         roles: ['waiter'] },
   { href: '/products',    label: 'Productos',       icon: Package,       roles: ['admin','super_admin'] },
+  { href: '/recetas',     label: 'Recetas',         icon: BookOpen,      roles: ['admin','super_admin'] },
   { href: '/inventory',   label: 'Inventario',      icon: Boxes,         roles: ['admin','super_admin','viewer'] },
   { href: '/dashboard',   label: 'Dashboard',       icon: BarChart3,     roles: ['admin','super_admin','viewer'] },
   { href: '/analytics',   label: 'Analítica',       icon: LineChart,     roles: ['admin','super_admin','viewer'] },

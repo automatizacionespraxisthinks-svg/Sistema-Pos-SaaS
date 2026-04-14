@@ -1,6 +1,6 @@
 import { Controller, Post, Get, Body, Headers, Query } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
-import { CashShiftService, OpenShiftDto, CloseShiftDto } from './cash-shift.service';
+import { CashShiftService, OpenShiftDto, CloseShiftDto, AddMovementDto } from './cash-shift.service';
 
 @ApiTags('CashShifts') @ApiBearerAuth()
 @Controller('cash-shifts')
@@ -34,6 +34,25 @@ export class CashShiftController {
     @Headers('x-user-id')   uid: string,
   ) {
     return this.svc.getCurrent(tid, uid);
+  }
+
+  /** Registrar un movimiento manual (ingreso/egreso) en el turno activo */
+  @Post('movements')
+  addMovement(
+    @Headers('x-tenant-id') tid: string,
+    @Headers('x-user-id')   uid: string,
+    @Body() dto: AddMovementDto,
+  ) {
+    return this.svc.addMovement(tid, uid, dto);
+  }
+
+  /** Obtener movimientos del turno activo del cajero */
+  @Get('movements')
+  getMovements(
+    @Headers('x-tenant-id') tid: string,
+    @Headers('x-user-id')   uid: string,
+  ) {
+    return this.svc.getMovements(tid, uid);
   }
 
   /** Turnos de hoy — todos los cajeros (admin) */

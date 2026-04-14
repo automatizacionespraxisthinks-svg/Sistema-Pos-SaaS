@@ -10,6 +10,7 @@ import {
   Receipt, CreditCard, X, CheckCircle,
   ChefHat, UserCheck, AlertCircle, Coins,
   LockKeyhole, Unlock, Clock, TrendingUp,
+  ArrowUpCircle, ArrowDownCircle, Send, Phone, Mail, Plus,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -255,6 +256,15 @@ export default function CajaPage() {
     { amount: '', method: 'cash', cashReceived: '' },
     { amount: '', method: 'cash', cashReceived: '' },
   ]);
+  // Movimiento manual de caja
+  const [movementModal,  setMovementModal]  = useState(false);
+  const [movType,        setMovType]        = useState<'income' | 'expense'>('income');
+  const [movAmount,      setMovAmount]      = useState('');
+  const [movReason,      setMovReason]      = useState('');
+  // Envío digital de factura
+  const [sendModal,      setSendModal]      = useState<any>(null); // order que acaba de pagarse
+  const [sendPhone,      setSendPhone]      = useState('');
+  const [sendEmail,      setSendEmail]      = useState('');
   const qc = useQueryClient();
 
   // ── Queries de turno ─────────────────────────────────────────────────────────
@@ -298,7 +308,37 @@ export default function CajaPage() {
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Error al cerrar turno'),
   });
 
+  // ── Movimientos manuales ──────────────────────────────────────────────────────
+
+  const { data: movements = [], refetch: refetchMovements } = useQuery<any[]>({
+    queryKey: ['cash-movements'],
+    queryFn: () => cashShiftApi.getMovements().then(r => r.data),
+    enabled: !!currentShift?.id,
+    staleTime: 0,
+  });
+
+  const addMovement = useMutation({
+    mutationFn: () => cashShiftApi.addMovement({
+      cashierName,
+      type:   movType,
+      amount: Number(movAmount),
+      reason: movReason,
+    }),
+    onSuccess: () => {
+      toast.success(movType === 'income' ? '✅ Ingreso registrado' : '✅ Egreso registrado');
+      setMovementModal(false);
+      setMovAmount('');
+      setMovReason('');
+      refetchMovements();
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Error al registrar movimiento'),
+  });
+
   const shiftOpen = !!currentShift?.id;
+
+  // Totales de movimientos para mostrar en cierre
+  const totalIncomes  = (movements as any[]).filter(m => m.type === 'income').reduce((a, m) => a + Number(m.amount), 0);
+  const totalExpenses = (movements as any[]).filter(m => m.type === 'expense').reduce((a, m) => a + Number(m.amount), 0);
 
   // ── Pedidos ──────────────────────────────────────────────────────────────────
 
@@ -381,6 +421,10 @@ export default function CajaPage() {
         tenant,
       );
       toast.success(`✅ Pago registrado — ${selectedOrder.orderNumber}`);
+      // Mostrar modal de envío digital antes de cerrar
+      setSendModal(selectedOrder);
+      setSendPhone('');
+      setSendEmail('');
       resetModal();
       qc.invalidateQueries({ queryKey: ['caja-orders'] });
       qc.invalidateQueries({ queryKey: ['orders'] });
@@ -526,6 +570,17 @@ export default function CajaPage() {
             {Number(currentShift.totalTips) > 0 && (
               <span className="text-emerald-600">🪙 Propinas: <strong>{fmt(Number(currentShift.totalTips))}</strong></span>
             )}
+            {totalIncomes > 0 && (
+              <span className="text-blue-600">↑ Ingresos: <strong>{fmt(totalIncomes)}</strong></span>
+            )}
+            {totalExpenses > 0 && (
+              <span className="text-red-600">↓ Egresos: <strong>{fmt(totalExpenses)}</strong></span>
+            )}
+            <button
+              onClick={() => { setMovType('income'); setMovAmount(''); setMovReason(''); setMovementModal(true); }}
+              className="ml-auto flex items-center gap-1.5 bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-600 hover:border-primary-400 hover:text-primary-600 transition-colors">
+              <Plus size={12} /> Movimiento
+            </button>
           </div>
         )}
 
@@ -1010,10 +1065,22 @@ export default function CajaPage() {
                 <span>💵 Ventas efectivo</span>
                 <strong>{fmt(Number(currentShift.cashSales))}</strong>
               </div>
+              {totalIncomes > 0 && (
+                <div className="flex justify-between text-blue-600">
+                  <span>↑ Ingresos manuales</span>
+                  <strong>+{fmt(totalIncomes)}</strong>
+                </div>
+              )}
+              {totalExpenses > 0 && (
+                <div className="flex justify-between text-red-600">
+                  <span>↓ Egresos manuales</span>
+                  <strong>−{fmt(totalExpenses)}</strong>
+                </div>
+              )}
               <div className="flex justify-between font-semibold text-slate-800 border-t border-slate-200 pt-1.5">
                 <span>Efectivo esperado en caja</span>
                 <strong className="text-emerald-700">
-                  {fmt(Number(currentShift.initialCash) + Number(currentShift.cashSales))}
+                  {fmt(Number(currentShift.initialCash) + Number(currentShift.cashSales) + totalIncomes - totalExpenses)}
                 </strong>
               </div>
               {Number(currentShift.cardSales) > 0 && (
@@ -1048,7 +1115,7 @@ export default function CajaPage() {
               {/* Preview descuadre */}
               {shiftCounted && (
                 (() => {
-                  const expected = Number(currentShift.initialCash) + Number(currentShift.cashSales);
+                  const expected = Number(currentShift.initialCash) + Number(currentShift.cashSales) + totalIncomes - totalExpenses;
                   const diff = Number(shiftCounted) - expected;
                   return (
                     <div className={`rounded-xl p-3 flex justify-between text-sm font-semibold ${
@@ -1078,6 +1145,217 @@ export default function CajaPage() {
                 disabled={closeShift.isPending || !shiftCounted}
                 className="flex-1 py-3 bg-amber-500 text-white rounded-xl font-semibold hover:bg-amber-600 disabled:opacity-50 transition-colors">
                 {closeShift.isPending ? 'Cerrando...' : 'Cerrar turno'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL MOVIMIENTO MANUAL ────────────────────────────────────────────── */}
+      {movementModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl">
+            <div className="flex items-center gap-3 mb-5">
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-none
+                ${movType === 'income' ? 'bg-blue-100' : 'bg-red-100'}`}>
+                {movType === 'income'
+                  ? <ArrowUpCircle size={20} className="text-blue-600" />
+                  : <ArrowDownCircle size={20} className="text-red-600" />
+                }
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-slate-900">Movimiento de caja</h2>
+                <p className="text-xs text-slate-500">Registra un ingreso o egreso manual</p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              {/* Tipo */}
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => setMovType('income')}
+                  className={`flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-colors ${
+                    movType === 'income'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}>
+                  <ArrowUpCircle size={15} /> Ingreso
+                </button>
+                <button
+                  onClick={() => setMovType('expense')}
+                  className={`flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-colors ${
+                    movType === 'expense'
+                      ? 'bg-red-600 text-white'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}>
+                  <ArrowDownCircle size={15} /> Egreso
+                </button>
+              </div>
+
+              {/* Monto */}
+              <div>
+                <label className="text-sm font-semibold text-slate-700 mb-1.5 block">Monto *</label>
+                <input
+                  type="number" inputMode="numeric" min="0"
+                  className="input text-xl text-center font-bold"
+                  placeholder="$ 0"
+                  value={movAmount}
+                  onChange={e => setMovAmount(e.target.value)}
+                  autoFocus
+                />
+              </div>
+
+              {/* Razón */}
+              <div>
+                <label className="text-sm font-semibold text-slate-700 mb-1.5 block">Concepto *</label>
+                <input
+                  className="input text-sm"
+                  placeholder={movType === 'income' ? 'Ej: depósito de billetería' : 'Ej: pago de proveedor'}
+                  value={movReason}
+                  onChange={e => setMovReason(e.target.value)}
+                />
+              </div>
+
+              {/* Lista de movimientos del turno */}
+              {(movements as any[]).length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
+                    Movimientos de este turno
+                  </p>
+                  <div className="space-y-1.5 max-h-32 overflow-y-auto">
+                    {(movements as any[]).map((m: any, i: number) => (
+                      <div key={i} className="flex justify-between text-xs">
+                        <span className="text-slate-600 flex items-center gap-1">
+                          {m.type === 'income'
+                            ? <ArrowUpCircle size={11} className="text-blue-500" />
+                            : <ArrowDownCircle size={11} className="text-red-500" />
+                          }
+                          {m.reason}
+                        </span>
+                        <span className={`font-semibold ${m.type === 'income' ? 'text-blue-600' : 'text-red-600'}`}>
+                          {m.type === 'income' ? '+' : '−'}{fmt(Number(m.amount))}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button onClick={() => setMovementModal(false)} className="flex-1 btn-outline py-3">
+                Cancelar
+              </button>
+              <button
+                onClick={() => addMovement.mutate()}
+                disabled={addMovement.isPending || !movAmount || !movReason}
+                className={`flex-1 py-3 rounded-xl text-white font-semibold text-sm transition-colors disabled:opacity-50 ${
+                  movType === 'income' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-red-600 hover:bg-red-700'
+                }`}>
+                {addMovement.isPending ? 'Guardando...' : `Registrar ${movType === 'income' ? 'ingreso' : 'egreso'}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL ENVÍO DIGITAL DE FACTURA ─────────────────────────────────────── */}
+      {sendModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl">
+            <div className="p-5 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-primary-100 rounded-xl flex items-center justify-center flex-none">
+                  <Send size={18} className="text-primary-600" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-slate-900">Enviar factura digital</h2>
+                  <p className="text-xs text-slate-500">{sendModal.orderNumber} · {fmt(Number(sendModal.total))}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-5 space-y-5">
+              {/* WhatsApp */}
+              <div>
+                <label className="text-sm font-semibold text-slate-700 mb-1.5 flex items-center gap-2">
+                  <Phone size={14} className="text-emerald-500" />
+                  WhatsApp
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="tel" inputMode="numeric"
+                    className="input text-sm flex-1"
+                    placeholder="Ej: 3001234567"
+                    value={sendPhone}
+                    onChange={e => setSendPhone(e.target.value.replace(/\D/g, ''))}
+                  />
+                  <button
+                    disabled={!sendPhone || sendPhone.length < 7}
+                    onClick={() => {
+                      const items = (sendModal.items ?? [])
+                        .map((i: any) => `  • ${i.quantity}× ${i.productName}`)
+                        .join('%0A');
+                      const msg = encodeURIComponent(
+                        `🧾 *Factura ${sendModal.orderNumber}*\n` +
+                        `${sendModal.tableNumber ? `Mesa: ${sendModal.tableNumber}\n` : ''}` +
+                        `Fecha: ${new Date().toLocaleDateString('es-CO')}\n\n` +
+                        `*Detalle:*\n`
+                      ) + items.replace(/ /g, '%20') +
+                      encodeURIComponent(`\n\n*Total: ${fmt(Number(sendModal.total))}*\n¡Gracias por su visita! 🙏`);
+                      window.open(`https://wa.me/57${sendPhone}?text=${msg}`, '_blank');
+                    }}
+                    className="flex items-center gap-1.5 bg-emerald-500 text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-emerald-600 disabled:opacity-40 transition-colors">
+                    Enviar
+                  </button>
+                </div>
+              </div>
+
+              {/* Email */}
+              <div>
+                <label className="text-sm font-semibold text-slate-700 mb-1.5 flex items-center gap-2">
+                  <Mail size={14} className="text-blue-500" />
+                  Correo electrónico
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="email"
+                    className="input text-sm flex-1"
+                    placeholder="cliente@email.com"
+                    value={sendEmail}
+                    onChange={e => setSendEmail(e.target.value)}
+                  />
+                  <button
+                    disabled={!sendEmail || !sendEmail.includes('@')}
+                    onClick={() => {
+                      const items = (sendModal.items ?? [])
+                        .map((i: any) => `${i.quantity}x ${i.productName}: ${fmt(Number(i.subtotal))}`)
+                        .join('%0A');
+                      const subject = encodeURIComponent(`Factura ${sendModal.orderNumber}`);
+                      const body = encodeURIComponent(
+                        `Estimado cliente,\n\nAdjuntamos el resumen de su pedido:\n\n`
+                      ) + items +
+                      encodeURIComponent(
+                        `\n\nTotal: ${fmt(Number(sendModal.total))}\n\n¡Gracias por su visita!\n${tenant?.name || 'Restaurante'}`
+                      );
+                      window.open(`mailto:${sendEmail}?subject=${subject}&body=${body}`, '_blank');
+                    }}
+                    className="flex items-center gap-1.5 bg-blue-500 text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-blue-600 disabled:opacity-40 transition-colors">
+                    Enviar
+                  </button>
+                </div>
+              </div>
+
+              <p className="text-[11px] text-slate-400 text-center">
+                Se abrirá la app de mensajería correspondiente con el resumen prellenado
+              </p>
+            </div>
+
+            <div className="p-5 pt-0">
+              <button
+                onClick={() => setSendModal(null)}
+                className="w-full btn-outline py-3 text-sm">
+                Omitir — ya está pagado ✓
               </button>
             </div>
           </div>

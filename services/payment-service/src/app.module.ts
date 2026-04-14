@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Payment } from './payments/payment.entity';
 import { CashShift } from './payments/cash-shift.entity';
+import { CashMovement } from './payments/cash-movement.entity';
 import { PaymentsController } from './payments/payments.controller';
 import { PaymentsService } from './payments/payments.service';
 import { CashShiftController } from './payments/cash-shift.controller';
@@ -16,12 +17,12 @@ import { CashShiftService } from './payments/cash-shift.service';
       useFactory: (cfg: ConfigService) => ({
         type: 'postgres',
         url: cfg.get('DATABASE_URL'),
-        entities: [Payment, CashShift],
+        entities: [Payment, CashShift, CashMovement],
         synchronize: true,
       }),
       inject: [ConfigService],
     }),
-    TypeOrmModule.forFeature([Payment, CashShift]),
+    TypeOrmModule.forFeature([Payment, CashShift, CashMovement]),
   ],
   controllers: [PaymentsController, CashShiftController],
   providers: [PaymentsService, CashShiftService],

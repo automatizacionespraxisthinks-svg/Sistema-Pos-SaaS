@@ -81,13 +81,22 @@ export const paymentsApi = {
 };
 
 export const cashShiftApi = {
-  open:       (data: { cashierName: string; initialCash: number; notes?: string }) =>
+  open:         (data: { cashierName: string; initialCash: number; notes?: string }) =>
     api.post('/cash-shifts/open', data),
-  close:      (data: { countedCash: number; notes?: string }) =>
+  close:        (data: { countedCash: number; notes?: string }) =>
     api.post('/cash-shifts/close', data),
-  getCurrent: ()             => api.get('/cash-shifts/current'),
-  getToday:   ()             => api.get('/cash-shifts/today'),
-  getSummary: (date?: string) => api.get('/cash-shifts/summary', { params: date ? { date } : {} }),
+  getCurrent:   ()             => api.get('/cash-shifts/current'),
+  getToday:     ()             => api.get('/cash-shifts/today'),
+  getSummary:   (date?: string) => api.get('/cash-shifts/summary', { params: date ? { date } : {} }),
+  addMovement:  (data: { cashierName: string; type: 'income' | 'expense'; amount: number; reason: string }) =>
+    api.post('/cash-shifts/movements', data),
+  getMovements: () => api.get('/cash-shifts/movements'),
+};
+
+export const recipesApi = {
+  list:   ()           => api.get('/inventory/recipes'),
+  upsert: (data: any)  => api.post('/inventory/recipes', data),
+  delete: (productId: string) => api.delete(`/inventory/recipes/${productId}`),
 };
 export const kitchenApi = {
   create: (data: any) => api.post('/kitchen/tickets', data),

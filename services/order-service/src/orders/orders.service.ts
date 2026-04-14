@@ -1,10 +1,35 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import * as http from 'http';
 import { Order, OrderStatus, OrderType, PaymentStatus } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
 import { CreateOrderDto, UpdateOrderStatusDto, OrderFilterDto, UpdateOrderItemsDto } from './dto/order.dto';
 import { auditLog } from './audit-client';
+
+/** Fire-and-forget: descuenta inventario al pagar un pedido */
+function deductInventory(tenantId: string, items: { productId: string; productName: string; quantity: number }[]) {
+  const inventoryUrl = process.env.INVENTORY_SERVICE_URL || 'http://localhost:3004';
+  const body = JSON.stringify({ tenantId, items });
+  try {
+    const parsed = new URL(`${inventoryUrl}/inventory/deduct-order`);
+    const req = http.request({
+      hostname: parsed.hostname,
+      port:     Number(parsed.port) || 80,
+      path:     parsed.pathname,
+      method:   'POST',
+      headers: {
+        'Content-Type':   'application/json',
+        'Content-Length': Buffer.byteLength(body),
+        'x-tenant-id':    tenantId,
+      },
+    }, (res) => { res.resume(); });
+    req.on('error', () => {});
+    req.setTimeout(3000, () => { req.destroy(); });
+    req.write(body);
+    req.end();
+  } catch { /* silent */ }
+}
 
 @Injectable()
 export class OrdersService {
@@ -95,6 +120,15 @@ export class OrdersService {
     if (dto.status === OrderStatus.CANCELLED) order.cancelReason = dto.reason;
     if (dto.status === OrderStatus.PAID) order.paymentStatus = PaymentStatus.PAID;
     const saved = await this.orderRepo.save(order);
+
+    // Auto-deducir inventario al pagar (fire-and-forget)
+    if (dto.status === OrderStatus.PAID && saved.items?.length) {
+      deductInventory(tenantId, saved.items.map(i => ({
+        productId:   i.productId,
+        productName: i.productName,
+        quantity:    i.quantity,
+      })));
+    }
 
     const action = dto.status === OrderStatus.CANCELLED ? 'CANCEL_ORDER' : 'UPDATE_ORDER_STATUS';
     auditLog({
