@@ -105,6 +105,14 @@ services:
       postgres: { condition: service_healthy }
     networks: [pos_net]
 
+  audit-service:
+    build: { context: ./services/audit-service }
+    container_name: pos_audit
+    env_file: ./services/audit-service/.env.docker
+    depends_on:
+      postgres: { condition: service_healthy }
+    networks: [pos_net]
+
   api-gateway:
     build: { context: ./services/api-gateway }
     container_name: pos_gateway
@@ -115,6 +123,7 @@ services:
       - auth-service
       - product-service
       - order-service
+      - audit-service
     networks: [pos_net]
 
   frontend:

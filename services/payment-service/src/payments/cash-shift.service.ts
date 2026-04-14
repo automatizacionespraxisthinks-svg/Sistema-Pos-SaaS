@@ -2,6 +2,7 @@ import { Injectable, BadRequestException, NotFoundException } from '@nestjs/comm
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between } from 'typeorm';
 import { CashShift } from './cash-shift.entity';
+import { auditLog } from './audit-client';
 import { IsNumber, IsOptional, IsString } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -45,7 +46,20 @@ export class CashShiftService {
       notes:       dto.notes ?? null,
       status:      'open',
     });
-    return this.repo.save(shift);
+    const saved = await this.repo.save(shift);
+
+    auditLog({
+      tenantId,
+      userId:   cashierId,
+      module:   'caja',
+      action:   'OPEN_SHIFT',
+      entityId: saved.id,
+      entityType: 'CashShift',
+      newValue: { cashierName: dto.cashierName, initialCash: dto.initialCash },
+      description: `Apertura de turno: ${dto.cashierName} — Fondo inicial $${dto.initialCash}`,
+    });
+
+    return saved;
   }
 
   /** Cierra el turno activo del cajero */
@@ -65,7 +79,28 @@ export class CashShiftService {
     shift.closedAt     = new Date();
     if (dto.notes) shift.notes = dto.notes;
 
-    return this.repo.save(shift);
+    const closed = await this.repo.save(shift);
+
+    auditLog({
+      tenantId,
+      userId:   cashierId,
+      module:   'caja',
+      action:   'CLOSE_SHIFT',
+      entityId: closed.id,
+      entityType: 'CashShift',
+      newValue: {
+        cashierName:  closed.cashierName,
+        countedCash:  closed.countedCash,
+        expectedCash: closed.expectedCash,
+        discrepancy:  closed.discrepancy,
+        cashSales:    closed.cashSales,
+        cardSales:    closed.cardSales,
+        totalTips:    closed.totalTips,
+      },
+      description: `Cierre de turno: ${closed.cashierName} — Esperado $${closed.expectedCash} / Contado $${closed.countedCash} / Descuadre $${closed.discrepancy}`,
+    });
+
+    return closed;
   }
 
   /** Obtiene el turno activo del cajero (null si no tiene) */

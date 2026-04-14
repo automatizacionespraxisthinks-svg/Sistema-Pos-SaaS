@@ -8,10 +8,39 @@ import { CreateProductDto, UpdateProductDto, ProductFilterDto } from './dto/prod
 @Controller('products')
 export class ProductsController {
   constructor(private readonly svc: ProductsService) {}
-  @Post() create(@Headers('x-tenant-id') tid: string, @Body() dto: CreateProductDto) { return this.svc.create(tid, dto); }
-  @Get() findAll(@Headers('x-tenant-id') tid: string, @Query() filters: ProductFilterDto) { return this.svc.findAll(tid, filters); }
-  @Get(':id') findOne(@Headers('x-tenant-id') tid: string, @Param('id') id: string) { return this.svc.findOne(tid, id); }
-  @Put(':id') update(@Headers('x-tenant-id') tid: string, @Param('id') id: string, @Body() dto: UpdateProductDto) { return this.svc.update(tid, id, dto); }
-  @Delete(':id') @HttpCode(HttpStatus.NO_CONTENT) remove(@Headers('x-tenant-id') tid: string, @Param('id') id: string) { return this.svc.remove(tid, id); }
-  @Get('health') health() { return { status: 'ok' }; }
+
+  @Post()
+  create(
+    @Headers('x-tenant-id') tid: string,
+    @Headers('x-user-id')   uid: string,
+    @Headers('x-user-role') rol: string,
+    @Body() dto: CreateProductDto,
+  ) { return this.svc.create(tid, dto, uid, rol); }
+
+  @Get()
+  findAll(@Headers('x-tenant-id') tid: string, @Query() filters: ProductFilterDto) { return this.svc.findAll(tid, filters); }
+
+  @Get(':id')
+  findOne(@Headers('x-tenant-id') tid: string, @Param('id') id: string) { return this.svc.findOne(tid, id); }
+
+  @Put(':id')
+  update(
+    @Headers('x-tenant-id') tid: string,
+    @Headers('x-user-id')   uid: string,
+    @Headers('x-user-role') rol: string,
+    @Param('id') id: string,
+    @Body() dto: UpdateProductDto,
+  ) { return this.svc.update(tid, id, dto, uid, rol); }
+
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  remove(
+    @Headers('x-tenant-id') tid: string,
+    @Headers('x-user-id')   uid: string,
+    @Headers('x-user-role') rol: string,
+    @Param('id') id: string,
+  ) { return this.svc.remove(tid, id, uid, rol); }
+
+  @Get('health')
+  health() { return { status: 'ok' }; }
 }

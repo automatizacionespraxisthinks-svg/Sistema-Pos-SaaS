@@ -18,6 +18,7 @@ const SERVICE_MAP: Record<string, string> = {
   '/api/cash-shifts': process.env.PAYMENT_SERVICE_URL     || 'http://localhost:3006',
   '/api/kitchen':     process.env.KITCHEN_SERVICE_URL     || 'http://localhost:3007',
   '/api/analytics':   process.env.ANALYTICS_SERVICE_URL   || 'http://localhost:3009',
+  '/api/audit-logs':  process.env.AUDIT_SERVICE_URL       || 'http://localhost:3008',
 };
 
 function resolve(url: string): { target: string; path: string } | null {
@@ -51,13 +52,15 @@ async function bootstrap() {
     // Extract claims from JWT so the client cannot spoof these headers
     let tenantFromJwt = '';
     let userIdFromJwt = '';
+    let userRoleFromJwt = '';
     const authHeader = req.headers['authorization'] as string;
     if (authHeader?.startsWith('Bearer ')) {
       try {
         const payload = authHeader.split('.')[1];
         const decoded = JSON.parse(Buffer.from(payload, 'base64url').toString());
-        if (decoded?.tenantId) tenantFromJwt = decoded.tenantId;
-        if (decoded?.sub)      userIdFromJwt  = decoded.sub;      // user UUID
+        if (decoded?.tenantId) tenantFromJwt  = decoded.tenantId;
+        if (decoded?.sub)      userIdFromJwt   = decoded.sub;      // user UUID
+        if (decoded?.role)     userRoleFromJwt = decoded.role;     // user role
       } catch { /* invalid JWT — downstream will reject */ }
     }
 
@@ -69,8 +72,9 @@ async function bootstrap() {
         headers: {
           'content-type':  req.headers['content-type']  || 'application/json',
           'authorization': authHeader || '',
-          'x-tenant-id':   tenantFromJwt || (req.headers['x-tenant-id'] as string) || '',
-          'x-user-id':     userIdFromJwt || (req.headers['x-user-id'] as string) || '',
+          'x-tenant-id':   tenantFromJwt  || (req.headers['x-tenant-id']  as string) || '',
+          'x-user-id':     userIdFromJwt  || (req.headers['x-user-id']    as string) || '',
+          'x-user-role':   userRoleFromJwt || (req.headers['x-user-role'] as string) || '',
         },
         validateStatus: () => true,
         timeout: 30_000,

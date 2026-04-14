@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Inventory, InventoryMovement, MovementType } from './inventory.entity';
+import { auditLog } from './audit-client';
 import { IsString, IsNumber, IsOptional, IsEnum } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -25,7 +26,7 @@ export class InventoryService {
 
   findOne(tenantId: string, productId: string) { return this.repo.findOne({ where: { tenantId, productId } }); }
 
-  async adjust(tenantId: string, dto: AdjustInventoryDto) {
+  async adjust(tenantId: string, dto: AdjustInventoryDto, actorId?: string, actorRole?: string) {
     let inv = await this.repo.findOne({ where: { tenantId, productId: dto.productId } });
     const prev = inv?.quantity ?? 0;
     if (!inv) inv = this.repo.create({ tenantId, productId: dto.productId, productName: dto.productName, quantity: 0 });
@@ -33,7 +34,29 @@ export class InventoryService {
       inv.quantity = Number(inv.quantity) + Number(dto.quantity);
     else inv.quantity = Math.max(0, Number(inv.quantity) - Number(dto.quantity));
     await this.repo.save(inv);
-    await this.movRepo.save(this.movRepo.create({ tenantId, productId: dto.productId, type: dto.type, quantity: dto.quantity, previousQuantity: prev, reason: dto.reason, userId: dto.userId }));
+    await this.movRepo.save(this.movRepo.create({
+      tenantId,
+      productId: dto.productId,
+      type: dto.type,
+      quantity: dto.quantity,
+      previousQuantity: prev,
+      reason: dto.reason,
+      userId: dto.userId,
+    }));
+
+    auditLog({
+      tenantId,
+      userId:   actorId || dto.userId,
+      userRole: actorRole,
+      module:   'inventory',
+      action:   'ADJUST_INVENTORY',
+      entityId: dto.productId,
+      entityType: 'Inventory',
+      previousValue: { productName: dto.productName, quantity: prev },
+      newValue:      { productName: dto.productName, quantity: inv.quantity, movementType: dto.type, delta: dto.quantity },
+      description: `Inventario ajustado: ${dto.productName} — ${prev} → ${inv.quantity} (${dto.type})${dto.reason ? ` — ${dto.reason}` : ''}`,
+    });
+
     return inv;
   }
 

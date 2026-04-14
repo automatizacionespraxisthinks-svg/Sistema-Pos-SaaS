@@ -7,6 +7,7 @@ import { User, UserRole } from '../users/entities/user.entity';
 import { RefreshToken } from './entities/refresh-token.entity';
 import { Tenant } from './entities/tenant.entity';
 import { LoginDto, RegisterDto, UpdateUserDto, CreateUserDto, UpdateTenantDto } from './dto/auth.dto';
+import { auditLog } from './audit-client';
 
 @Injectable()
 export class AuthService {
@@ -37,6 +38,20 @@ export class AuthService {
       role:      UserRole.ADMIN,
     });
     await this.userRepo.save(user);
+
+    auditLog({
+      tenantId: tenant.id,
+      userId:   user.id,
+      userName: `${user.firstName} ${user.lastName}`,
+      userRole: user.role,
+      module:   'auth',
+      action:   'REGISTER_TENANT',
+      entityId: tenant.id,
+      entityType: 'Tenant',
+      newValue: { slug: tenant.slug, name: tenant.name, adminEmail: dto.email },
+      description: `Nuevo negocio registrado: ${tenant.name} (${tenant.slug})`,
+    });
+
     return this.tokens(user);
   }
 
@@ -50,6 +65,19 @@ export class AuthService {
     if (!user || !(await bcrypt.compare(dto.password, user.password)))
       throw new UnauthorizedException('Credenciales inválidas');
     if (!user.isActive) throw new UnauthorizedException('Cuenta desactivada');
+
+    auditLog({
+      tenantId: tenant.id,
+      userId:   user.id,
+      userName: `${user.firstName} ${user.lastName}`,
+      userRole: user.role,
+      module:   'auth',
+      action:   'LOGIN',
+      entityId: user.id,
+      entityType: 'User',
+      description: `Inicio de sesión: ${user.email} (${user.role})`,
+    });
+
     return this.tokens(user);
   }
 
@@ -76,7 +104,7 @@ export class AuthService {
 
   // ── Users ─────────────────────────────────────────────────────────────────
 
-  async createUser(tenantId: string, dto: CreateUserDto) {
+  async createUser(tenantId: string, dto: CreateUserDto, actorId?: string, actorRole?: string) {
     if (await this.userRepo.findOne({ where: { email: dto.email } }))
       throw new ConflictException('Email already registered');
     const user = this.userRepo.create({
@@ -86,6 +114,19 @@ export class AuthService {
     });
     await this.userRepo.save(user);
     const { password, ...result } = user as any;
+
+    auditLog({
+      tenantId,
+      userId:   actorId,
+      userRole: actorRole,
+      module:   'users',
+      action:   'CREATE_USER',
+      entityId: user.id,
+      entityType: 'User',
+      newValue: { email: user.email, firstName: user.firstName, lastName: user.lastName, role: user.role },
+      description: `Usuario creado: ${user.email} con rol ${user.role}`,
+    });
+
     return result;
   }
 
@@ -99,23 +140,55 @@ export class AuthService {
     });
   }
 
-  async updateUser(tenantId: string, id: string, dto: UpdateUserDto) {
+  async updateUser(tenantId: string, id: string, dto: UpdateUserDto, actorId?: string, actorRole?: string) {
     const user = await this.userRepo.findOne({ where: { id, tenantId } });
     if (!user) throw new NotFoundException('User not found');
+
+    const prev = { role: user.role, isActive: user.isActive, firstName: user.firstName, lastName: user.lastName };
+
     if (dto.firstName !== undefined) user.firstName = dto.firstName;
     if (dto.lastName  !== undefined) user.lastName  = dto.lastName;
     if (dto.role      !== undefined) user.role      = dto.role;
     if (dto.isActive  !== undefined) user.isActive  = dto.isActive;
     await this.userRepo.save(user);
     const { password, ...result } = user as any;
+
+    auditLog({
+      tenantId,
+      userId:   actorId,
+      userRole: actorRole,
+      module:   'users',
+      action:   'UPDATE_USER',
+      entityId: user.id,
+      entityType: 'User',
+      previousValue: prev,
+      newValue: { role: user.role, isActive: user.isActive, firstName: user.firstName, lastName: user.lastName },
+      description: `Usuario actualizado: ${user.email}`,
+    });
+
     return result;
   }
 
-  async deleteUser(tenantId: string, id: string) {
+  async deleteUser(tenantId: string, id: string, actorId?: string, actorRole?: string) {
     const user = await this.userRepo.findOne({ where: { id, tenantId } });
     if (!user) throw new NotFoundException('User not found');
+    const wasActive = user.isActive;
     user.isActive = false;
     await this.userRepo.save(user);
+
+    auditLog({
+      tenantId,
+      userId:   actorId,
+      userRole: actorRole,
+      module:   'users',
+      action:   'DEACTIVATE_USER',
+      entityId: user.id,
+      entityType: 'User',
+      previousValue: { isActive: wasActive },
+      newValue:      { isActive: false },
+      description: `Usuario desactivado: ${user.email}`,
+    });
+
     return { message: 'User deactivated' };
   }
 
@@ -133,11 +206,28 @@ export class AuthService {
     return t;
   }
 
-  async updateTenant(tenantId: string, dto: UpdateTenantDto) {
+  async updateTenant(tenantId: string, dto: UpdateTenantDto, actorId?: string, actorRole?: string) {
     const t = await this.tenantRepo.findOne({ where: { id: tenantId } });
     if (!t) throw new NotFoundException('Tenant not found');
+
+    const prev = { name: t.name, phone: t.phone, address: t.address, primaryColor: t.primaryColor };
     Object.assign(t, dto);
-    return this.tenantRepo.save(t);
+    const saved = await this.tenantRepo.save(t);
+
+    auditLog({
+      tenantId,
+      userId:   actorId,
+      userRole: actorRole,
+      module:   'tenant',
+      action:   'UPDATE_TENANT',
+      entityId: tenantId,
+      entityType: 'Tenant',
+      previousValue: prev,
+      newValue: dto,
+      description: `Configuración del negocio actualizada`,
+    });
+
+    return saved;
   }
 
   // ── Private ───────────────────────────────────────────────────────────────

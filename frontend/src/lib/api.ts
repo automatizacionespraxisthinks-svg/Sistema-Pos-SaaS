@@ -96,6 +96,21 @@ export const kitchenApi = {
     api.patch(`/kitchen/tickets/${id}/status`, { status, assignedTo }),
   getHistory: () => api.get('/kitchen/tickets/history'),
 };
+export const auditApi = {
+  list: (params?: {
+    userId?: string;
+    userRole?: string;
+    module?: string;
+    action?: string;
+    from?: string;
+    to?: string;
+    search?: string;
+    page?: number;
+    limit?: number;
+  }) => api.get('/audit-logs', { params }),
+  getFilters: () => api.get('/audit-logs/filters'),
+};
+
 export const analyticsApi = {
   getDashboard:     (date?: string)                        => api.get('/analytics/dashboard',       { params: date ? { date } : {} }),
   getSales:         (from?: string, to?: string)           => api.get('/analytics/sales',            { params: { from, to } }),

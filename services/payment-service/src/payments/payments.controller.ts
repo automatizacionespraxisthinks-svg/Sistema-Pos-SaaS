@@ -10,8 +10,10 @@ export class PaymentsController {
   @Post()
   process(
     @Headers('x-tenant-id') tid: string,
+    @Headers('x-user-id')   uid: string,
+    @Headers('x-user-role') rol: string,
     @Body() dto: ProcessPaymentDto,
-  ) { return this.svc.process(tid, dto); }
+  ) { return this.svc.process(tid, dto, uid, rol); }
 
   @Get('order/:orderId')
   findByOrder(

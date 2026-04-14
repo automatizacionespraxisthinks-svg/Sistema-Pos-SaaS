@@ -20,11 +20,21 @@ export class AuthController {
     }
     return this.svc.register(dto);
   }
-  @Post('login')     login(@Body() dto: LoginDto) { return this.svc.login(dto); }
-  @Post('refresh')   refresh(@Body() dto: RefreshTokenDto) { return this.svc.refresh(dto.refreshToken); }
-  @Post('logout')    logout(@Headers('x-user-id') uid: string) { return this.svc.logout(uid); }
-  @Post('validate')  validate(@Body() b: { token: string }) { return this.svc.validateToken(b.token); }
-  @Get('health')     health() { return { status: 'ok', service: 'auth-service' }; }
+
+  @Post('login')
+  login(@Body() dto: LoginDto) { return this.svc.login(dto); }
+
+  @Post('refresh')
+  refresh(@Body() dto: RefreshTokenDto) { return this.svc.refresh(dto.refreshToken); }
+
+  @Post('logout')
+  logout(@Headers('x-user-id') uid: string) { return this.svc.logout(uid); }
+
+  @Post('validate')
+  validate(@Body() b: { token: string }) { return this.svc.validateToken(b.token); }
+
+  @Get('health')
+  health() { return { status: 'ok', service: 'auth-service' }; }
 
   @Get('tenant/public/:slug')
   getTenantPublic(@Param('slug') slug: string) { return this.svc.getTenantPublic(slug); }
@@ -36,15 +46,19 @@ export class AuthController {
   @Patch('tenant')
   updateTenant(
     @Headers('x-tenant-id') tid: string,
+    @Headers('x-user-id')   uid: string,
+    @Headers('x-user-role') rol: string,
     @Body() dto: UpdateTenantDto,
-  ) { return this.svc.updateTenant(tid, dto); }
+  ) { return this.svc.updateTenant(tid, dto, uid, rol); }
 
   // ── Users (requires auth) ─────────────────────────────────────────────────
   @Post('users')
   createUser(
     @Headers('x-tenant-id') tid: string,
+    @Headers('x-user-id')   uid: string,
+    @Headers('x-user-role') rol: string,
     @Body() dto: CreateUserDto,
-  ) { return this.svc.createUser(tid, dto); }
+  ) { return this.svc.createUser(tid, dto, uid, rol); }
 
   @Get('users')
   @ApiQuery({ name: 'role', required: false })
@@ -56,13 +70,17 @@ export class AuthController {
   @Patch('users/:id')
   updateUser(
     @Headers('x-tenant-id') tid: string,
+    @Headers('x-user-id')   uid: string,
+    @Headers('x-user-role') rol: string,
     @Param('id') id: string,
     @Body() dto: UpdateUserDto,
-  ) { return this.svc.updateUser(tid, id, dto); }
+  ) { return this.svc.updateUser(tid, id, dto, uid, rol); }
 
   @Delete('users/:id')
   deleteUser(
     @Headers('x-tenant-id') tid: string,
+    @Headers('x-user-id')   uid: string,
+    @Headers('x-user-role') rol: string,
     @Param('id') id: string,
-  ) { return this.svc.deleteUser(tid, id); }
+  ) { return this.svc.deleteUser(tid, id, uid, rol); }
 }

@@ -4,7 +4,7 @@ import { usePathname, useRouter } from 'next/navigation';
 // (no local state needed)
 import {
   ShoppingCart, Package, ClipboardList, ChefHat,
-  BarChart3, LineChart, Settings, LogOut, Boxes, X, Landmark, BarChart2, Coins,
+  BarChart3, LineChart, Settings, LogOut, Boxes, X, Landmark, BarChart2, Coins, ShieldCheck,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import { TenantBranding } from '@/hooks/useTenantTheme';
@@ -21,6 +21,7 @@ const ALL_NAV = [
   { href: '/dashboard', label: 'Dashboard',       icon: BarChart3,     roles: ['admin','super_admin','viewer'] },
   { href: '/analytics', label: 'Analítica',       icon: LineChart,     roles: ['admin','super_admin','viewer'] },
   { href: '/admin',     label: 'Administración',  icon: Settings,      roles: ['admin','super_admin'] },
+  { href: '/audit',     label: 'Auditoría',       icon: ShieldCheck,   roles: ['admin','super_admin'] },
 ];
 
 interface Props {

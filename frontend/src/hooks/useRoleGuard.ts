@@ -15,6 +15,7 @@ const ROLE_ROUTES: Record<string, string[]> = {
     '/caja':        ['admin', 'super_admin', 'cashier'],
     '/caja/cierre': ['admin', 'super_admin'],
     '/admin':       ['admin', 'super_admin'],
+    '/audit':       ['admin', 'super_admin'],
 };
 
 export function useRoleGuard(path: string) {

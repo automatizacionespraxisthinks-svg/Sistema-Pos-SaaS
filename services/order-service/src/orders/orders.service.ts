@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { Order, OrderStatus, OrderType, PaymentStatus } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
 import { CreateOrderDto, UpdateOrderStatusDto, OrderFilterDto, UpdateOrderItemsDto } from './dto/order.dto';
+import { auditLog } from './audit-client';
 
 @Injectable()
 export class OrdersService {
@@ -12,7 +13,7 @@ export class OrdersService {
     @InjectRepository(OrderItem) private readonly itemRepo: Repository<OrderItem>,
   ) {}
 
-  async create(tenantId: string, dto: CreateOrderDto) {
+  async create(tenantId: string, dto: CreateOrderDto, actorId?: string, actorRole?: string) {
     const count = await this.orderRepo.count({ where: { tenantId } });
     const orderNumber = `ORD-${new Date().toISOString().slice(0,10).replace(/-/g,'')}-${String(count+1).padStart(4,'0')}`;
     const subtotal = dto.items.reduce((a, i) => a + i.unitPrice * i.quantity, 0);
@@ -26,7 +27,21 @@ export class OrdersService {
       subtotal, tax, discount, total,
       items: dto.items.map(i => this.itemRepo.create({ ...i, subtotal: i.unitPrice * i.quantity })),
     });
-    return this.orderRepo.save(order);
+    const saved = await this.orderRepo.save(order);
+
+    auditLog({
+      tenantId,
+      userId:   actorId,
+      userRole: actorRole,
+      module:   'orders',
+      action:   'CREATE_ORDER',
+      entityId: saved.id,
+      entityType: 'Order',
+      newValue: { orderNumber: saved.orderNumber, type: saved.type, tableNumber: saved.tableNumber, total: saved.total, itemCount: dto.items.length },
+      description: `Pedido creado: ${saved.orderNumber} — Mesa ${saved.tableNumber || '-'} — Total $${saved.total}`,
+    });
+
+    return saved;
   }
 
   async findAll(tenantId: string, filters: OrderFilterDto) {
@@ -61,7 +76,7 @@ export class OrdersService {
     });
   }
 
-  async updateStatus(tenantId: string, id: string, dto: UpdateOrderStatusDto) {
+  async updateStatus(tenantId: string, id: string, dto: UpdateOrderStatusDto, actorId?: string, actorRole?: string) {
     const order = await this.findOne(tenantId, id);
     const allowed: Record<OrderStatus, OrderStatus[]> = {
       [OrderStatus.PENDING]:   [OrderStatus.CONFIRMED, OrderStatus.CANCELLED],
@@ -74,17 +89,38 @@ export class OrdersService {
     };
     if (!allowed[order.status]?.includes(dto.status))
       throw new BadRequestException(`Cannot transition from ${order.status} to ${dto.status}`);
+
+    const prevStatus = order.status;
     order.status = dto.status;
     if (dto.status === OrderStatus.CANCELLED) order.cancelReason = dto.reason;
     if (dto.status === OrderStatus.PAID) order.paymentStatus = PaymentStatus.PAID;
-    return this.orderRepo.save(order);
+    const saved = await this.orderRepo.save(order);
+
+    const action = dto.status === OrderStatus.CANCELLED ? 'CANCEL_ORDER' : 'UPDATE_ORDER_STATUS';
+    auditLog({
+      tenantId,
+      userId:   actorId,
+      userRole: actorRole,
+      module:   'orders',
+      action,
+      entityId: saved.id,
+      entityType: 'Order',
+      previousValue: { status: prevStatus },
+      newValue:      { status: dto.status, reason: dto.reason },
+      description: `Pedido ${order.orderNumber}: ${prevStatus} → ${dto.status}${dto.reason ? ` (${dto.reason})` : ''}`,
+    });
+
+    return saved;
   }
 
-  async updateItems(tenantId: string, id: string, dto: UpdateOrderItemsDto) {
+  async updateItems(tenantId: string, id: string, dto: UpdateOrderItemsDto, actorId?: string, actorRole?: string) {
     const order = await this.orderRepo.findOne({ where: { id, tenantId }, relations: ['items'] });
     if (!order) throw new NotFoundException('Order not found');
     if (!['pending', 'confirmed'].includes(order.status))
       throw new BadRequestException('Solo se pueden editar pedidos pendientes o confirmados');
+
+    const prevTotal     = order.total;
+    const prevItemCount = order.items?.length ?? 0;
 
     const subtotal = dto.items.reduce((a, i) => a + i.unitPrice * i.quantity, 0);
     const tax      = Math.round(subtotal * 0.19);
@@ -102,6 +138,21 @@ export class OrdersService {
     order.discount = discount;
     order.total    = total;
 
-    return this.orderRepo.save(order);
+    const saved = await this.orderRepo.save(order);
+
+    auditLog({
+      tenantId,
+      userId:   actorId,
+      userRole: actorRole,
+      module:   'orders',
+      action:   'UPDATE_ORDER_ITEMS',
+      entityId: saved.id,
+      entityType: 'Order',
+      previousValue: { total: prevTotal, itemCount: prevItemCount },
+      newValue:      { total: saved.total, itemCount: dto.items.length },
+      description: `Items del pedido ${order.orderNumber} actualizados — Nuevo total: $${saved.total}`,
+    });
+
+    return saved;
   }
 }

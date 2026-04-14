@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Payment, PaymentMethod, PaymentStatus } from './payment.entity';
 import { CashShiftService } from './cash-shift.service';
+import { auditLog } from './audit-client';
 import { IsString, IsNumber, IsOptional, IsEnum } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -27,7 +28,7 @@ export class PaymentsService {
     private readonly shiftSvc: CashShiftService,
   ) {}
 
-  async process(tenantId: string, dto: ProcessPaymentDto) {
+  async process(tenantId: string, dto: ProcessPaymentDto, actorId?: string, actorRole?: string) {
     const tipAmount = Number(dto.tip ?? 0);
     const change = dto.method === PaymentMethod.CASH && dto.cashReceived
       ? dto.cashReceived - (dto.amount + tipAmount)
@@ -48,6 +49,26 @@ export class PaymentsService {
         tenantId, dto.cashierId, dto.method, dto.amount, tipAmount,
       ).catch(() => {});
     }
+
+    auditLog({
+      tenantId,
+      userId:   actorId || dto.cashierId,
+      userRole: actorRole,
+      module:   'payments',
+      action:   'PROCESS_PAYMENT',
+      entityId: saved.id,
+      entityType: 'Payment',
+      newValue: {
+        orderId:     dto.orderId,
+        amount:      dto.amount,
+        tip:         tipAmount,
+        method:      dto.method,
+        cashierName: dto.cashierName,
+        waiterName:  dto.waiterName,
+        reference:   saved.reference,
+      },
+      description: `Pago procesado — Orden: ${dto.orderId} — $${dto.amount} (${dto.method})${tipAmount > 0 ? ` + propina $${tipAmount}` : ''}`,
+    });
 
     return saved;
   }
