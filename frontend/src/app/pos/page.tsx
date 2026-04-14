@@ -7,7 +7,7 @@ import { useCartStore } from '@/store/cart.store';
 import { useRoleGuard } from '@/hooks/useRoleGuard';
 import {
   Plus, Minus, Trash2, ShoppingCart, Search,
-  X, ChevronUp, UserCheck, AlertCircle, SendHorizonal,
+  X, ChevronUp, UserCheck, AlertCircle, SendHorizonal, MessageSquare,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -21,11 +21,14 @@ export default function POSPage() {
   const qc = useQueryClient();
 
   const {
-    items, addItem, removeItem, updateQty, clearCart,
+    items, addItem, removeItem, updateQty, updateNotes, clearCart,
     tableNumber, orderType, setTable, setType,
     waiterId, waiterName, setWaiter,
     subtotal, tax, total, discount,
   } = useCartStore();
+
+  // Track which item has the notes field open
+  const [noteOpen, setNoteOpen] = useState<Record<string, boolean>>({});
 
   const cartCount = items.reduce((a, i) => a + i.quantity, 0);
 
@@ -149,26 +152,74 @@ export default function POSPage() {
             <p className="text-sm">Selecciona productos del menú</p>
           </div>
         ) : items.map(item => (
-          <div key={item.productId} className="flex items-center gap-2 bg-slate-50 rounded-lg p-2">
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-slate-900 truncate">{item.productName}</p>
-              <p className="text-xs text-primary-600 font-semibold">{fmt(item.unitPrice)}</p>
+          <div key={item.productId} className="bg-slate-50 rounded-lg p-2 space-y-1.5">
+            {/* Fila principal */}
+            <div className="flex items-center gap-2">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-slate-900 truncate">{item.productName}</p>
+                <p className="text-xs text-primary-600 font-semibold">{fmt(item.unitPrice)}</p>
+              </div>
+              <div className="flex items-center gap-1 flex-none">
+                {/* Botón nota */}
+                <button
+                  onClick={() => setNoteOpen(s => ({ ...s, [item.productId]: !s[item.productId] }))}
+                  title="Agregar observación"
+                  className={`w-7 h-7 rounded-full flex items-center justify-center transition-colors ${
+                    item.notes
+                      ? 'bg-amber-100 text-amber-600'
+                      : 'bg-slate-200 text-slate-500 hover:bg-amber-100 hover:text-amber-600'
+                  }`}>
+                  <MessageSquare size={11} />
+                </button>
+                <button onClick={() => updateQty(item.productId, item.quantity - 1)}
+                  className="w-7 h-7 rounded-full bg-slate-200 flex items-center justify-center hover:bg-slate-300">
+                  <Minus size={12} />
+                </button>
+                <span className="text-sm font-bold w-6 text-center">{item.quantity}</span>
+                <button onClick={() => updateQty(item.productId, item.quantity + 1)}
+                  className="w-7 h-7 rounded-full bg-primary-600 text-white flex items-center justify-center hover:bg-primary-700">
+                  <Plus size={12} />
+                </button>
+                <button onClick={() => removeItem(item.productId)}
+                  className="w-7 h-7 rounded-full bg-red-100 text-red-500 flex items-center justify-center hover:bg-red-200 ml-1">
+                  <Trash2 size={10} />
+                </button>
+              </div>
             </div>
-            <div className="flex items-center gap-1 flex-none">
-              <button onClick={() => updateQty(item.productId, item.quantity - 1)}
-                className="w-7 h-7 rounded-full bg-slate-200 flex items-center justify-center hover:bg-slate-300">
-                <Minus size={12} />
+
+            {/* Nota visible (si existe y campo cerrado) */}
+            {item.notes && !noteOpen[item.productId] && (
+              <button
+                onClick={() => setNoteOpen(s => ({ ...s, [item.productId]: true }))}
+                className="w-full text-left text-xs text-amber-700 bg-amber-50 rounded px-2 py-1 italic truncate"
+              >
+                📝 {item.notes}
               </button>
-              <span className="text-sm font-bold w-6 text-center">{item.quantity}</span>
-              <button onClick={() => updateQty(item.productId, item.quantity + 1)}
-                className="w-7 h-7 rounded-full bg-primary-600 text-white flex items-center justify-center hover:bg-primary-700">
-                <Plus size={12} />
-              </button>
-              <button onClick={() => removeItem(item.productId)}
-                className="w-7 h-7 rounded-full bg-red-100 text-red-500 flex items-center justify-center hover:bg-red-200 ml-1">
-                <Trash2 size={10} />
-              </button>
-            </div>
+            )}
+
+            {/* Campo de texto de la nota */}
+            {noteOpen[item.productId] && (
+              <div className="flex gap-1">
+                <input
+                  autoFocus
+                  type="text"
+                  value={item.notes ?? ''}
+                  onChange={e => updateNotes(item.productId, e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' || e.key === 'Escape')
+                      setNoteOpen(s => ({ ...s, [item.productId]: false }));
+                  }}
+                  placeholder="ej: sin cebolla, término medio..."
+                  className="flex-1 text-xs border border-amber-300 rounded px-2 py-1 outline-none focus:ring-1 focus:ring-amber-400 bg-white"
+                />
+                <button
+                  onClick={() => setNoteOpen(s => ({ ...s, [item.productId]: false }))}
+                  className="text-xs px-2 py-1 bg-amber-500 text-white rounded hover:bg-amber-600"
+                >
+                  OK
+                </button>
+              </div>
+            )}
           </div>
         ))}
       </div>

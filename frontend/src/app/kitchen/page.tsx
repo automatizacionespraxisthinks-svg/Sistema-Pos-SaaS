@@ -79,14 +79,29 @@ export default function KitchenPage() {
                   {new Date(t.createdAt).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}
                 </p>
               </div>
-              <div className="space-y-1.5 mb-4">
+              <div className="space-y-2 mb-4">
                 {t.items?.map((item: any, i: number) => (
-                  <div key={i} className="flex items-center gap-2">
-                    <span className="w-6 h-6 bg-white bg-opacity-70 rounded-full text-xs font-bold flex items-center justify-center flex-none">{item.quantity}</span>
-                    <span className="text-sm font-medium">{item.productName}</span>
+                  <div key={i}>
+                    <div className="flex items-center gap-2">
+                      <span className="w-6 h-6 bg-white bg-opacity-70 rounded-full text-xs font-bold flex items-center justify-center flex-none shrink-0">
+                        {item.quantity}
+                      </span>
+                      <span className="text-sm font-semibold leading-tight">{item.productName}</span>
+                    </div>
+                    {item.notes && (
+                      <div className="ml-8 mt-0.5">
+                        <span className="inline-block text-xs font-medium bg-yellow-200 text-yellow-900 rounded px-2 py-0.5 leading-tight">
+                          ⚠️ {item.notes}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 ))}
-                {t.notes && <p className="text-xs italic opacity-70 mt-2 pt-2 border-t border-current border-opacity-20">📝 {t.notes}</p>}
+                {t.notes && (
+                  <p className="text-xs italic opacity-70 mt-2 pt-2 border-t border-current border-opacity-20">
+                    📝 {t.notes}
+                  </p>
+                )}
               </div>
               <p className="text-xs font-semibold mb-3">{LABELS[t.status]}</p>
               {NEXT[t.status] && (
