@@ -3,6 +3,7 @@ import { useState, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useRoleGuard } from '@/hooks/useRoleGuard';
 import { auditApi } from '@/lib/api';
+import AppLayout from '@/components/layout/AppLayout';
 import {
   ShieldCheck, Search, Filter, ChevronLeft, ChevronRight,
   User, Clock, Package, FileText, AlertCircle, RefreshCw,
@@ -166,7 +167,8 @@ export default function AuditPage() {
   const hasActiveFilters = Object.values(applied).some(v => v !== '');
 
   return (
-    <div className="space-y-6">
+    <AppLayout>
+    <div className="space-y-6 p-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -536,5 +538,6 @@ export default function AuditPage() {
         Los registros de auditoría son de solo lectura. No se pueden modificar ni eliminar.
       </div>
     </div>
+    </AppLayout>
   );
 }
