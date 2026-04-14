@@ -2,7 +2,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import AppLayout from '@/components/layout/AppLayout';
 import { useRoleGuard } from '@/hooks/useRoleGuard';
-import { kitchenApi } from '@/lib/api';
+import { kitchenApi, ordersApi } from '@/lib/api';
 import { ChefHat, Clock } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -27,8 +27,20 @@ export default function KitchenPage() {
   });
 
   const update = useMutation({
-    mutationFn: ({ id, status }: { id: string; status: string }) => kitchenApi.updateStatus(id, status),
-    onSuccess: () => { toast.success('Estado actualizado'); qc.invalidateQueries({ queryKey: ['kitchen'] }); },
+    mutationFn: async ({ id, status, orderId }: { id: string; status: string; orderId?: string }) => {
+      await kitchenApi.updateStatus(id, status);
+      if (orderId) {
+        const orderStatus = status === 'in_progress' ? 'preparing' : status === 'ready' ? 'ready' : null;
+        if (orderStatus) {
+          try { await ordersApi.updateStatus(orderId, orderStatus); } catch { /* best-effort */ }
+        }
+      }
+    },
+    onSuccess: () => {
+      toast.success('Estado actualizado');
+      qc.invalidateQueries({ queryKey: ['kitchen'] });
+      qc.invalidateQueries({ queryKey: ['orders'] });
+    },
   });
 
   return (
@@ -78,7 +90,7 @@ export default function KitchenPage() {
               </div>
               <p className="text-xs font-semibold mb-3">{LABELS[t.status]}</p>
               {NEXT[t.status] && (
-                <button onClick={() => update.mutate({ id: t.id, status: NEXT[t.status].status })}
+                <button onClick={() => update.mutate({ id: t.id, status: NEXT[t.status].status, orderId: t.orderId })}
                   disabled={update.isPending}
                   className="w-full bg-white bg-opacity-70 hover:bg-opacity-100 rounded-lg py-2 text-sm font-semibold transition-all">
                   {NEXT[t.status].label}

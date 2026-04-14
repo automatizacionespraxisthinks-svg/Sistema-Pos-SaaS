@@ -3,31 +3,53 @@ import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
-import { User } from '../users/entities/user.entity';
+import { User, UserRole } from '../users/entities/user.entity';
 import { RefreshToken } from './entities/refresh-token.entity';
-import { LoginDto, RegisterDto, RefreshTokenDto, UpdateUserDto } from './dto/auth.dto';
+import { Tenant } from './entities/tenant.entity';
+import { LoginDto, RegisterDto, UpdateUserDto, CreateUserDto, UpdateTenantDto } from './dto/auth.dto';
 
 @Injectable()
 export class AuthService {
   constructor(
     @InjectRepository(User) private readonly userRepo: Repository<User>,
     @InjectRepository(RefreshToken) private readonly rtRepo: Repository<RefreshToken>,
+    @InjectRepository(Tenant) private readonly tenantRepo: Repository<Tenant>,
     private readonly jwt: JwtService,
   ) {}
 
+  // ── Tenant registration (creates new business + owner account) ────────────
+
   async register(dto: RegisterDto) {
+    if (await this.tenantRepo.findOne({ where: { slug: dto.slug } }))
+      throw new ConflictException('Este código de negocio ya está en uso');
     if (await this.userRepo.findOne({ where: { email: dto.email } }))
-      throw new ConflictException('Email already registered');
-    const user = this.userRepo.create({ ...dto, password: await bcrypt.hash(dto.password, 12) });
+      throw new ConflictException('Este correo ya está registrado');
+
+    const tenant = this.tenantRepo.create({ slug: dto.slug, name: dto.businessName });
+    await this.tenantRepo.save(tenant);
+
+    const user = this.userRepo.create({
+      email:     dto.email,
+      password:  await bcrypt.hash(dto.password, 12),
+      firstName: dto.firstName,
+      lastName:  dto.lastName,
+      tenantId:  tenant.id,
+      role:      UserRole.ADMIN,
+    });
     await this.userRepo.save(user);
     return this.tokens(user);
   }
 
+  // ── Auth ──────────────────────────────────────────────────────────────────
+
   async login(dto: LoginDto) {
-    const user = await this.userRepo.findOne({ where: { email: dto.email } });
+    const tenant = await this.tenantRepo.findOne({ where: { slug: dto.slug, isActive: true } });
+    if (!tenant) throw new UnauthorizedException('Negocio no encontrado');
+
+    const user = await this.userRepo.findOne({ where: { email: dto.email, tenantId: tenant.id } });
     if (!user || !(await bcrypt.compare(dto.password, user.password)))
-      throw new UnauthorizedException('Invalid credentials');
-    if (!user.isActive) throw new UnauthorizedException('Account deactivated');
+      throw new UnauthorizedException('Credenciales inválidas');
+    if (!user.isActive) throw new UnauthorizedException('Cuenta desactivada');
     return this.tokens(user);
   }
 
@@ -52,7 +74,9 @@ export class AuthService {
     } catch { return null; }
   }
 
-  async createUser(tenantId: string, dto: RegisterDto) {
+  // ── Users ─────────────────────────────────────────────────────────────────
+
+  async createUser(tenantId: string, dto: CreateUserDto) {
     if (await this.userRepo.findOne({ where: { email: dto.email } }))
       throw new ConflictException('Email already registered');
     const user = this.userRepo.create({
@@ -68,21 +92,20 @@ export class AuthService {
   async getUsersByRole(tenantId: string, role?: string) {
     const where: any = { tenantId };
     if (role) where.role = role;
-    const users = await this.userRepo.find({
+    return this.userRepo.find({
       where,
       select: ['id', 'firstName', 'lastName', 'role', 'email', 'isActive'],
       order: { firstName: 'ASC' },
     });
-    return users;
   }
 
   async updateUser(tenantId: string, id: string, dto: UpdateUserDto) {
     const user = await this.userRepo.findOne({ where: { id, tenantId } });
     if (!user) throw new NotFoundException('User not found');
-    if (dto.firstName  !== undefined) user.firstName = dto.firstName;
-    if (dto.lastName   !== undefined) user.lastName  = dto.lastName;
-    if (dto.role       !== undefined) user.role      = dto.role;
-    if (dto.isActive   !== undefined) user.isActive  = dto.isActive;
+    if (dto.firstName !== undefined) user.firstName = dto.firstName;
+    if (dto.lastName  !== undefined) user.lastName  = dto.lastName;
+    if (dto.role      !== undefined) user.role      = dto.role;
+    if (dto.isActive  !== undefined) user.isActive  = dto.isActive;
     await this.userRepo.save(user);
     const { password, ...result } = user as any;
     return result;
@@ -96,12 +119,39 @@ export class AuthService {
     return { message: 'User deactivated' };
   }
 
+  // ── Tenant ────────────────────────────────────────────────────────────────
+
+  async getTenant(tenantId: string) {
+    const t = await this.tenantRepo.findOne({ where: { id: tenantId } });
+    if (!t) throw new NotFoundException('Tenant not found');
+    return t;
+  }
+
+  async getTenantPublic(slug: string) {
+    const t = await this.tenantRepo.findOne({ where: { slug, isActive: true }, select: ['name', 'slug', 'logoUrl', 'primaryColor'] });
+    if (!t) throw new NotFoundException('Negocio no encontrado');
+    return t;
+  }
+
+  async updateTenant(tenantId: string, dto: UpdateTenantDto) {
+    const t = await this.tenantRepo.findOne({ where: { id: tenantId } });
+    if (!t) throw new NotFoundException('Tenant not found');
+    Object.assign(t, dto);
+    return this.tenantRepo.save(t);
+  }
+
+  // ── Private ───────────────────────────────────────────────────────────────
+
   private async tokens(user: User) {
     const p = { sub: user.id, email: user.email, role: user.role, tenantId: user.tenantId };
-    const accessToken = this.jwt.sign(p, { expiresIn: '15m' });
+    const accessToken  = this.jwt.sign(p, { expiresIn: '15m' });
     const refreshToken = this.jwt.sign(p, { expiresIn: '7d' });
     const expiresAt = new Date(); expiresAt.setDate(expiresAt.getDate() + 7);
     await this.rtRepo.save(this.rtRepo.create({ token: refreshToken, userId: user.id, expiresAt }));
-    return { accessToken, refreshToken, user: { id: user.id, email: user.email, firstName: user.firstName, lastName: user.lastName, role: user.role, tenantId: user.tenantId } };
+    return {
+      accessToken,
+      refreshToken,
+      user: { id: user.id, email: user.email, firstName: user.firstName, lastName: user.lastName, role: user.role, tenantId: user.tenantId },
+    };
   }
 }

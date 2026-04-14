@@ -15,6 +15,7 @@ const SERVICE_MAP: Record<string, string> = {
   '/api/orders':      process.env.ORDER_SERVICE_URL       || 'http://localhost:3004',
   '/api/inventory':   process.env.INVENTORY_SERVICE_URL   || 'http://localhost:3005',
   '/api/payments':    process.env.PAYMENT_SERVICE_URL     || 'http://localhost:3006',
+  '/api/cash-shifts': process.env.PAYMENT_SERVICE_URL     || 'http://localhost:3006',
   '/api/kitchen':     process.env.KITCHEN_SERVICE_URL     || 'http://localhost:3007',
   '/api/analytics':   process.env.ANALYTICS_SERVICE_URL   || 'http://localhost:3009',
 };
@@ -47,6 +48,19 @@ async function bootstrap() {
     // because match.path already contains the query string (?limit=200 etc.)
     const url = `${match.target}${match.path}`;
 
+    // Extract claims from JWT so the client cannot spoof these headers
+    let tenantFromJwt = '';
+    let userIdFromJwt = '';
+    const authHeader = req.headers['authorization'] as string;
+    if (authHeader?.startsWith('Bearer ')) {
+      try {
+        const payload = authHeader.split('.')[1];
+        const decoded = JSON.parse(Buffer.from(payload, 'base64url').toString());
+        if (decoded?.tenantId) tenantFromJwt = decoded.tenantId;
+        if (decoded?.sub)      userIdFromJwt  = decoded.sub;      // user UUID
+      } catch { /* invalid JWT — downstream will reject */ }
+    }
+
     try {
       const upstream = await axios({
         method: req.method,
@@ -54,9 +68,9 @@ async function bootstrap() {
         data: ['GET', 'HEAD', 'DELETE'].includes(req.method) ? undefined : req.body,
         headers: {
           'content-type':  req.headers['content-type']  || 'application/json',
-          'authorization': req.headers['authorization'] || '',
-          'x-tenant-id':   req.headers['x-tenant-id']  || '',
-          'x-user-id':     req.headers['x-user-id']    || '',
+          'authorization': authHeader || '',
+          'x-tenant-id':   tenantFromJwt || (req.headers['x-tenant-id'] as string) || '',
+          'x-user-id':     userIdFromJwt || (req.headers['x-user-id'] as string) || '',
         },
         validateStatus: () => true,
         timeout: 30_000,

@@ -54,6 +54,7 @@ export default function ProductsPage() {
   const [editing,    setEditing]    = useState<string | null>(null);
   const [preview,    setPreview]    = useState('');
   const [imgLoading, setImgLoading] = useState(false);
+  const [skuManual,  setSkuManual]  = useState(false);
 
   const { data: pd } = useQuery({
     queryKey: ['products-admin'],
@@ -111,8 +112,21 @@ export default function ProductsPage() {
     if (fileRef.current) fileRef.current.value = '';
   }
 
+  function generateSku(categoryId: string): string {
+    if (!categoryId) return '';
+    const cat = (cats as any[]).find((c: any) => c.id === categoryId);
+    if (!cat) return '';
+    const prefix = cat.name
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-zA-Z0-9]/g, '')
+      .substring(0, 3)
+      .toUpperCase();
+    const count = (products as any[]).filter((p: any) => p.categoryId === categoryId).length + 1;
+    return `${prefix}-${String(count).padStart(3, '0')}`;
+  }
+
   function openNew() {
-    setForm(EMPTY); setEditing(null); setPreview(''); setModal(true);
+    setForm(EMPTY); setEditing(null); setPreview(''); setSkuManual(false); setModal(true);
   }
 
   function openEdit(p: any) {
@@ -128,7 +142,7 @@ export default function ProductsPage() {
   }
 
   function closeModal() {
-    setModal(false); setForm(EMPTY); setEditing(null); setPreview('');
+    setModal(false); setForm(EMPTY); setEditing(null); setPreview(''); setSkuManual(false);
   }
 
   return (
@@ -264,12 +278,28 @@ export default function ProductsPage() {
                     <input type="number" className="input" value={form.costPrice} onChange={e => setForm({ ...form, costPrice: e.target.value })} />
                   </div>
                   <div>
-                    <label className="text-xs font-semibold text-slate-600 mb-1 block">SKU</label>
-                    <input className="input" value={form.sku} onChange={e => setForm({ ...form, sku: e.target.value })} />
+                    <label className="text-xs font-semibold text-slate-600 mb-1 block">
+                      SKU
+                      {!editing && !skuManual && form.categoryId && (
+                        <span className="ml-2 text-primary-500 font-normal text-[10px]">auto</span>
+                      )}
+                    </label>
+                    <input className="input" placeholder="Ej: BEB-001"
+                      value={form.sku}
+                      onChange={e => { setSkuManual(true); setForm({ ...form, sku: e.target.value }); }}
+                    />
                   </div>
                   <div>
                     <label className="text-xs font-semibold text-slate-600 mb-1 block">Categoría</label>
-                    <select className="input" value={form.categoryId} onChange={e => setForm({ ...form, categoryId: e.target.value })}>
+                    <select className="input" value={form.categoryId}
+                      onChange={e => {
+                        const catId = e.target.value;
+                        setForm((f: any) => ({
+                          ...f,
+                          categoryId: catId,
+                          sku: (!editing && !skuManual) ? generateSku(catId) : f.sku,
+                        }));
+                      }}>
                       <option value="">Sin categoría</option>
                       {(cats as any[]).map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </select>

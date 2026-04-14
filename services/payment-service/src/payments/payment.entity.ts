@@ -12,6 +12,10 @@ export class Payment {
   @Column({ type: 'enum', enum: PaymentStatus, default: PaymentStatus.COMPLETED }) status: PaymentStatus;
   @Column({ nullable: true }) reference: string;
   @Column({ nullable: true }) cashierId: string;
+  @Column({ nullable: true }) cashierName: string;
+  /** Mesero que atendió la mesa — para asignar la propina */
+  @Column({ nullable: true }) waiterId: string;
+  @Column({ nullable: true }) waiterName: string;
   @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true }) cashReceived: number;
   @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true }) change: number;
   @Column({ nullable: true, type: 'text' }) notes: string;

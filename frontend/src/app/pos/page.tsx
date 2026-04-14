@@ -46,12 +46,13 @@ export default function POSPage() {
   });
   const products = (pd as any)?.data ?? [];
 
-  const { data: waiters = [] } = useQuery<any[]>({
+  const { data: allWaiters = [] } = useQuery<any[]>({
     queryKey: ['waiters'],
     queryFn: () => authApi.getUsers('waiter').then(r => r.data),
     enabled: orderType === 'dine_in',
     staleTime: 5 * 60 * 1000,
   });
+  const waiters = (allWaiters as any[]).filter((w: any) => w.isActive);
 
   // ── crear pedido (SIN pago — el pago lo hace caja) ──────────────────────────
 

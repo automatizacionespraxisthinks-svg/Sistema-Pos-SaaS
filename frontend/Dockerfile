@@ -3,6 +3,10 @@ WORKDIR /app
 COPY package.json ./
 RUN npm install
 COPY . .
+# API_GATEWAY_URL must be known at build time because Next.js bakes rewrites()
+# into .next/routes-manifest.json during `next build`.
+ARG API_GATEWAY_URL=http://api-gateway:3000
+ENV API_GATEWAY_URL=$API_GATEWAY_URL
 RUN npm run build
 
 FROM node:20-alpine

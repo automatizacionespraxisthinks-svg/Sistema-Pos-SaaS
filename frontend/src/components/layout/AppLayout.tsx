@@ -6,11 +6,13 @@ import Sidebar from './Sidebar';
 import InstallPWA from '@/components/pwa/InstallPWA';
 import TopLoader from '@/components/ui/TopLoader';
 import { useAuthStore } from '@/store/auth.store';
+import { useTenantTheme } from '@/hooks/useTenantTheme';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, init } = useAuthStore();
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const tenant = useTenantTheme();
 
   useEffect(() => { init(); }, []);
 
@@ -23,7 +25,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50">
       <TopLoader />
-      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} tenant={tenant} />
 
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Mobile top bar */}
@@ -33,8 +35,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             <Menu size={22} />
           </button>
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 bg-primary-600 rounded-lg flex items-center justify-center font-bold text-white text-sm">P</div>
-            <span className="font-semibold text-slate-900 text-sm">POS SaaS</span>
+            {tenant.logoUrl ? (
+              <img src={tenant.logoUrl} alt={tenant.name}
+                className="w-7 h-7 rounded-lg object-contain bg-white border border-slate-200" />
+            ) : (
+              <div className="w-7 h-7 bg-primary-600 rounded-lg flex items-center justify-center font-bold text-white text-sm">
+                {tenant.name.charAt(0).toUpperCase()}
+              </div>
+            )}
+            <span className="font-semibold text-slate-900 text-sm">{tenant.name}</span>
           </div>
         </header>
 

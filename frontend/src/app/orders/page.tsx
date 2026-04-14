@@ -54,7 +54,7 @@ export default function OrdersPage() {
   });
   const orders = (data as any)?.data ?? [];
 
-  const { data: prodData } = useQuery({
+  const { data: prodData, isLoading: loadingProds } = useQuery({
     queryKey: ['products-orders', prodSearch],
     queryFn: () => productsApi.list({ search: prodSearch || undefined, limit: 50 }).then(r => r.data),
     enabled: !!editOrder,
@@ -275,7 +275,10 @@ export default function OrdersPage() {
                   />
                 </div>
                 <div className="space-y-1 max-h-40 overflow-y-auto">
-                  {products.map((p: any) => (
+                  {loadingProds && (
+                    <p className="text-sm text-slate-400 text-center py-3">Cargando productos...</p>
+                  )}
+                  {!loadingProds && products.map((p: any) => (
                     <button key={p.id} onClick={() => addProduct(p)}
                       className="w-full flex items-center justify-between px-3 py-2 rounded-lg hover:bg-primary-50 border border-transparent hover:border-primary-200 transition-colors text-left">
                       <span className="text-sm font-medium text-slate-700">{p.name}</span>
@@ -284,11 +287,11 @@ export default function OrdersPage() {
                       </span>
                     </button>
                   ))}
-                  {products.length === 0 && prodSearch && (
-                    <p className="text-sm text-slate-400 text-center py-3">Sin resultados</p>
+                  {!loadingProds && products.length === 0 && prodSearch && (
+                    <p className="text-sm text-slate-400 text-center py-3">Sin resultados para "{prodSearch}"</p>
                   )}
-                  {products.length === 0 && !prodSearch && (
-                    <p className="text-sm text-slate-400 text-center py-3">Escribe para buscar productos</p>
+                  {!loadingProds && products.length === 0 && !prodSearch && (
+                    <p className="text-sm text-slate-400 text-center py-3">No hay productos disponibles</p>
                   )}
                 </div>
               </div>

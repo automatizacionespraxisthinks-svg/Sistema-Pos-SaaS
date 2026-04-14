@@ -11,8 +11,10 @@ const ROLE_ROUTES: Record<string, string[]> = {
     '/products': ['admin', 'super_admin'],
     '/dashboard': ['admin', 'super_admin', 'viewer'],
     '/analytics': ['admin', 'super_admin', 'viewer'],
-    '/caja':      ['admin', 'super_admin', 'cashier'],
-    '/admin':     ['admin', 'super_admin'],
+    '/propinas':    ['waiter', 'admin', 'super_admin'],
+    '/caja':        ['admin', 'super_admin', 'cashier'],
+    '/caja/cierre': ['admin', 'super_admin'],
+    '/admin':       ['admin', 'super_admin'],
 };
 
 export function useRoleGuard(path: string) {

@@ -4,11 +4,14 @@ import { useRoleGuard } from '@/hooks/useRoleGuard';
 import Link from 'next/link';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { categoriesApi, authApi } from '@/lib/api';
+import { useEffect } from 'react';
+import { categoriesApi, authApi, tenantApi } from '@/lib/api';
+import { applyPrimaryColor } from '@/lib/themeUtils';
 import {
   Package, Boxes, BarChart3, Tag, Trash2,
   Users, UserPlus, Pencil, X, ShieldCheck,
   Eye, EyeOff, ChefHat, CreditCard, UserCheck,
+  Palette, Upload, Store,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -45,7 +48,7 @@ export default function AdminPage() {
   useRoleGuard('/admin');
   const qc = useQueryClient();
 
-  const [tab, setTab]         = useState<'general' | 'users'>('general');
+  const [tab, setTab]         = useState<'general' | 'users' | 'branding'>('general');
 
   // categories
   const [catName, setCatName]   = useState('');
@@ -57,6 +60,9 @@ export default function AdminPage() {
   const [userForm, setUserForm]     = useState<any>(USER_EMPTY);
   const [showPass, setShowPass]     = useState(false);
   const [roleFilter, setRoleFilter] = useState('');
+
+  // branding
+  const [brandForm, setBrandForm] = useState<any>(null);
 
   // ── queries ─────────────────────────────────────────────────────────────────
 
@@ -70,6 +76,16 @@ export default function AdminPage() {
     queryFn: () => authApi.getUsers(roleFilter || undefined).then(r => r.data),
     enabled: tab === 'users',
   });
+
+  const { data: tenant } = useQuery({
+    queryKey: ['tenant'],
+    queryFn: () => tenantApi.get().then(r => r.data),
+    enabled: tab === 'branding',
+  });
+
+  useEffect(() => {
+    if (tenant && !brandForm) setBrandForm(tenant);
+  }, [tenant]);
 
   // ── category mutations ───────────────────────────────────────────────────────
 
@@ -128,6 +144,29 @@ export default function AdminPage() {
     },
   });
 
+  const saveBrand = useMutation({
+    mutationFn: () => tenantApi.update(brandForm),
+    onSuccess: () => {
+      toast.success('Personalización guardada ✓');
+      // Apply color immediately without page reload
+      if (brandForm?.primaryColor) applyPrimaryColor(brandForm.primaryColor);
+      // Update both caches so sidebar/header reflect new name & logo instantly
+      qc.setQueryData(['tenant-theme'], (old: any) => ({ ...(old ?? {}), ...brandForm }));
+      qc.invalidateQueries({ queryKey: ['tenant'] });
+      qc.invalidateQueries({ queryKey: ['tenant-theme'] });
+    },
+    onError: () => toast.error('Error al guardar'),
+  });
+
+  async function brandLogoFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) { toast.error('La imagen debe ser menor a 2 MB'); return; }
+    const reader = new FileReader();
+    reader.onload = () => setBrandForm((f: any) => ({ ...f, logoUrl: reader.result as string }));
+    reader.readAsDataURL(file);
+  }
+
   // ── helpers ──────────────────────────────────────────────────────────────────
 
   function openNewUser() {
@@ -169,8 +208,9 @@ export default function AdminPage() {
         {/* Tabs */}
         <div className="flex gap-1 mb-6 bg-slate-100 p-1 rounded-xl w-fit">
           {[
-            { key: 'general', label: 'General',  icon: Tag    },
-            { key: 'users',   label: 'Usuarios', icon: Users  },
+            { key: 'general',  label: 'General',          icon: Tag     },
+            { key: 'users',    label: 'Usuarios',          icon: Users   },
+            { key: 'branding', label: 'Personalización',   icon: Palette },
           ].map(({ key, label, icon: Icon }) => (
             <button key={key}
               onClick={() => setTab(key as any)}
@@ -377,6 +417,102 @@ export default function AdminPage() {
             )}
           </div>
         )}
+
+        {/* ── TAB PERSONALIZACIÓN ──────────────────────────────────────────── */}
+        {tab === 'branding' && (
+          <div className="max-w-2xl space-y-6">
+            {!brandForm ? (
+              <p className="text-slate-400 text-center py-10">Cargando...</p>
+            ) : (
+              <>
+                {/* Logo + color */}
+                <div className="card">
+                  <h2 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
+                    <Store size={18} className="text-slate-500" />Identidad del negocio
+                  </h2>
+                  <div className="flex items-start gap-6 mb-5">
+                    <div className="flex-none">
+                      <p className="text-xs font-medium text-slate-600 mb-2">Logo</p>
+                      <div className="w-24 h-24 rounded-xl border-2 border-dashed border-slate-300 flex items-center justify-center overflow-hidden bg-slate-50">
+                        {brandForm.logoUrl
+                          ? <img src={brandForm.logoUrl} alt="Logo" className="w-full h-full object-contain" />
+                          : <Store size={32} className="text-slate-300" />
+                        }
+                      </div>
+                      <div className="mt-2 flex gap-2">
+                        <label className="btn-outline text-xs py-1 px-2 cursor-pointer flex items-center gap-1">
+                          <Upload size={11} />Subir
+                          <input type="file" className="hidden" accept="image/*" onChange={brandLogoFile} />
+                        </label>
+                        {brandForm.logoUrl && (
+                          <button onClick={() => setBrandForm((f: any) => ({ ...f, logoUrl: '' }))}
+                            className="text-xs text-red-500 hover:text-red-700 px-2 py-1 border border-red-200 rounded-lg">
+                            Quitar
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex-1 space-y-3">
+                      <div>
+                        <label className="text-xs font-medium text-slate-600 mb-1 block">Nombre del negocio *</label>
+                        <input className="input" value={brandForm.name || ''}
+                          onChange={e => setBrandForm((f: any) => ({ ...f, name: e.target.value }))} />
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-slate-600 mb-1 block">Color principal</label>
+                        <div className="flex items-center gap-3">
+                          <input type="color" className="h-10 w-14 rounded-lg border border-slate-300 cursor-pointer p-1"
+                            value={brandForm.primaryColor || '#3B82F6'}
+                            onChange={e => setBrandForm((f: any) => ({ ...f, primaryColor: e.target.value }))} />
+                          <input className="input flex-1 font-mono text-sm" placeholder="#3B82F6"
+                            value={brandForm.primaryColor || ''}
+                            onChange={e => setBrandForm((f: any) => ({ ...f, primaryColor: e.target.value }))} />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Contact & billing info */}
+                <div className="card">
+                  <h2 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
+                    <Tag size={18} className="text-slate-500" />Información del negocio
+                  </h2>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-xs font-medium text-slate-600 mb-1 block">Teléfono</label>
+                      <input className="input" placeholder="+57 300 000 0000"
+                        value={brandForm.phone || ''}
+                        onChange={e => setBrandForm((f: any) => ({ ...f, phone: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-slate-600 mb-1 block">NIT / RUT</label>
+                      <input className="input" placeholder="900.123.456-7"
+                        value={brandForm.taxId || ''}
+                        onChange={e => setBrandForm((f: any) => ({ ...f, taxId: e.target.value }))} />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="text-xs font-medium text-slate-600 mb-1 block">Dirección</label>
+                      <input className="input" placeholder="Calle 10 #5-20, Bogotá"
+                        value={brandForm.address || ''}
+                        onChange={e => setBrandForm((f: any) => ({ ...f, address: e.target.value }))} />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-end">
+                  <button
+                    onClick={() => saveBrand.mutate()}
+                    disabled={saveBrand.isPending || !brandForm.name}
+                    className="btn-primary px-8 py-2.5 disabled:opacity-50 disabled:cursor-not-allowed">
+                    {saveBrand.isPending ? 'Guardando...' : 'Guardar cambios'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
       </div>
 
       {/* ── USER MODAL ──────────────────────────────────────────────────────────── */}

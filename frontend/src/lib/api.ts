@@ -34,12 +34,18 @@ export const fmt = (n: number) =>
   new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(n);
 
 export const authApi = {
-  login:       (email: string, password: string) => api.post('/auth/login', { email, password }),
-  register:    (data: any)                       => api.post('/auth/register', data),
-  createUser:  (data: any)                       => api.post('/auth/users', data),
-  getUsers:    (role?: string)                   => api.get('/auth/users', { params: role ? { role } : {} }),
-  updateUser:  (id: string, data: any)           => api.patch(`/auth/users/${id}`, data),
-  deleteUser:  (id: string)                      => api.delete(`/auth/users/${id}`),
+  login:       (slug: string, email: string, password: string) => api.post('/auth/login', { slug, email, password }),
+  register:    (data: any)                                     => api.post('/auth/register', data),
+  createUser:  (data: any)                                     => api.post('/auth/users', data),
+  getUsers:    (role?: string)                                 => api.get('/auth/users', { params: role ? { role } : {} }),
+  updateUser:  (id: string, data: any)                         => api.patch(`/auth/users/${id}`, data),
+  deleteUser:  (id: string)                                    => api.delete(`/auth/users/${id}`),
+};
+
+export const tenantApi = {
+  get:    ()          => api.get('/auth/tenant'),
+  update: (data: any) => api.patch('/auth/tenant', data),
+  public: (slug: string) => api.get(`/auth/tenant/public/${slug}`),
 };
 export const productsApi = {
   list: (params?: any) => api.get('/products', { params }),
@@ -68,9 +74,20 @@ export const inventoryApi = {
   getMovements: (productId?: string) => api.get('/inventory/movements', { params: productId ? { productId } : {} }),
 };
 export const paymentsApi = {
-  process: (data: any) => api.post('/payments', data),
-  getByOrder: (orderId: string) => api.get(`/payments/order/${orderId}`),
+  process:         (data: any)     => api.post('/payments', data),
+  getByOrder:      (orderId: string) => api.get(`/payments/order/${orderId}`),
   getDailySummary: (date?: string) => api.get('/payments/summary/daily', { params: date ? { date } : {} }),
+  getMyTips:       ()              => api.get('/payments/tips/my'),
+};
+
+export const cashShiftApi = {
+  open:       (data: { cashierName: string; initialCash: number; notes?: string }) =>
+    api.post('/cash-shifts/open', data),
+  close:      (data: { countedCash: number; notes?: string }) =>
+    api.post('/cash-shifts/close', data),
+  getCurrent: ()             => api.get('/cash-shifts/current'),
+  getToday:   ()             => api.get('/cash-shifts/today'),
+  getSummary: (date?: string) => api.get('/cash-shifts/summary', { params: date ? { date } : {} }),
 };
 export const kitchenApi = {
   create: (data: any) => api.post('/kitchen/tickets', data),

@@ -3,11 +3,13 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import AppLayout from '@/components/layout/AppLayout';
 import { useRoleGuard } from '@/hooks/useRoleGuard';
-import { ordersApi, paymentsApi, fmt } from '@/lib/api';
+import { ordersApi, paymentsApi, cashShiftApi, fmt } from '@/lib/api';
 import { useAuthStore } from '@/store/auth.store';
+import { useTenantTheme } from '@/hooks/useTenantTheme';
 import {
   Receipt, CreditCard, X, CheckCircle,
   ChefHat, UserCheck, AlertCircle, Coins,
+  LockKeyhole, Unlock, Clock, TrendingUp,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -53,10 +55,19 @@ const TIP_PRESETS = [
 
 // ─── generador de factura ─────────────────────────────────────────────────────
 
+interface TenantInfo {
+  name: string;
+  logoUrl?: string | null;
+  phone?: string | null;
+  taxId?: string | null;
+  address?: string | null;
+}
+
 function printInvoice(
   order: any,
   payment: { method: PayMethod; tip: number; cashReceived?: number; splits?: Split[] },
   cashierName: string,
+  tenant?: TenantInfo,
 ) {
   const win = window.open('', '_blank', 'width=440,height=780');
   if (!win) return;
@@ -84,6 +95,11 @@ function printInvoice(
     weekday: 'long', year: 'numeric', month: 'long',
     day: 'numeric', hour: '2-digit', minute: '2-digit',
   });
+
+  const businessName = tenant?.name || 'POS SaaS';
+  const logoHtml = tenant?.logoUrl
+    ? `<img src="${tenant.logoUrl}" alt="${businessName}" style="max-width:80px;max-height:60px;object-fit:contain;margin-bottom:6px;" />`
+    : '';
 
   const html = `<!DOCTYPE html>
 <html lang="es">
@@ -131,8 +147,11 @@ function printInvoice(
 </head>
 <body>
   <div class="header">
-    <div class="brand">🍽️ POS SaaS</div>
-    <div class="subtitle">Sistema de punto de venta</div>
+    ${logoHtml}
+    <div class="brand">${businessName}</div>
+    ${tenant?.phone    ? `<div class="subtitle">Tel: ${tenant.phone}</div>` : ''}
+    ${tenant?.taxId    ? `<div class="subtitle">NIT: ${tenant.taxId}</div>` : ''}
+    ${tenant?.address  ? `<div class="subtitle">${tenant.address}</div>` : ''}
     <div class="invoice-tag">FACTURA / RECIBO</div>
   </div>
   <div class="divider"></div>
@@ -214,6 +233,14 @@ export default function CajaPage() {
 
   const { user } = useAuthStore();
   const cashierName = user ? `${user.firstName} ${user.lastName}` : 'Cajero';
+  const tenant = useTenantTheme();
+
+  // ── Turno de caja ─────────────────────────────────────────────────────────────
+  const [openShiftModal,  setOpenShiftModal]  = useState(false);
+  const [closeShiftModal, setCloseShiftModal] = useState(false);
+  const [shiftInitial,    setShiftInitial]    = useState('');
+  const [shiftCounted,    setShiftCounted]    = useState('');
+  const [shiftNotes,      setShiftNotes]      = useState('');
 
   const [filter, setFilter]            = useState('pending_payment');
   const [selectedOrder, setSelected]   = useState<any>(null);
@@ -230,12 +257,55 @@ export default function CajaPage() {
   ]);
   const qc = useQueryClient();
 
+  // ── Queries de turno ─────────────────────────────────────────────────────────
+
+  const { data: currentShift, isLoading: loadingShift, refetch: refetchShift } = useQuery({
+    queryKey: ['cash-shift-current'],
+    queryFn: () => cashShiftApi.getCurrent().then(r => r.data),
+    staleTime: 0,
+  });
+
+  const openShift = useMutation({
+    mutationFn: () => cashShiftApi.open({
+      cashierName,
+      initialCash: Number(shiftInitial),
+      notes: shiftNotes || undefined,
+    }),
+    onSuccess: () => {
+      toast.success('✅ Caja abierta');
+      setOpenShiftModal(false);
+      setShiftInitial('');
+      setShiftNotes('');
+      refetchShift();
+      qc.invalidateQueries({ queryKey: ['cash-shift-current'] });
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Error al abrir caja'),
+  });
+
+  const closeShift = useMutation({
+    mutationFn: () => cashShiftApi.close({
+      countedCash: Number(shiftCounted),
+      notes: shiftNotes || undefined,
+    }),
+    onSuccess: () => {
+      toast.success('✅ Turno cerrado correctamente');
+      setCloseShiftModal(false);
+      setShiftCounted('');
+      setShiftNotes('');
+      refetchShift();
+      qc.invalidateQueries({ queryKey: ['cash-shift-current'] });
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Error al cerrar turno'),
+  });
+
+  const shiftOpen = !!currentShift?.id;
+
   // ── Pedidos ──────────────────────────────────────────────────────────────────
 
   const { data, isLoading } = useQuery({
     queryKey: ['caja-orders'],
     queryFn: () => ordersApi.list({ limit: 200 }).then(r => r.data),
-    refetchInterval: 20_000,
+    refetchInterval: 8_000,
   });
 
   const allOrders: any[] = (data as any)?.data ?? [];
@@ -288,6 +358,10 @@ export default function CajaPage() {
         tip:          tipAmount,
         method:       splitMode ? (uniqueMethods.length === 1 ? method : 'cash') : payMethod,
         cashReceived: !splitMode && payMethod === 'cash' && cashReceived ? Number(cashReceived) : undefined,
+        cashierId:    user?.id,
+        cashierName,
+        waiterId:     selectedOrder.waiterId   || undefined,
+        waiterName:   selectedOrder.waiterName || undefined,
       });
       const st = selectedOrder.status;
       if (st === 'delivered' || st === 'ready') {
@@ -304,6 +378,7 @@ export default function CajaPage() {
           splits:       splitMode ? splits : undefined,
         },
         cashierName,
+        tenant,
       );
       toast.success(`✅ Pago registrado — ${selectedOrder.orderNumber}`);
       resetModal();
@@ -391,13 +466,68 @@ export default function CajaPage() {
               {new Date().toLocaleDateString('es-CO', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
             </p>
           </div>
-          <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-2">
-            <Receipt size={16} className="text-emerald-600" />
-            <span className="text-sm font-semibold text-emerald-700">
-              {pendingPayment.length} pendiente{pendingPayment.length !== 1 ? 's' : ''} de cobro
-            </span>
+          <div className="flex items-center gap-2 flex-wrap">
+            {!loadingShift && (
+              shiftOpen ? (
+                <button
+                  onClick={() => { setShiftCounted(''); setShiftNotes(''); setCloseShiftModal(true); }}
+                  className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100 transition-colors">
+                  <Unlock size={15} />
+                  Turno abierto · Cerrar turno
+                </button>
+              ) : (
+                <button
+                  onClick={() => { setShiftInitial(''); setShiftNotes(''); setOpenShiftModal(true); }}
+                  className="flex items-center gap-2 bg-amber-50 border border-amber-300 rounded-xl px-4 py-2 text-sm font-semibold text-amber-700 hover:bg-amber-100 transition-colors">
+                  <LockKeyhole size={15} />
+                  Abrir caja
+                </button>
+              )
+            )}
+            <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-2">
+              <Receipt size={16} className="text-emerald-600" />
+              <span className="text-sm font-semibold text-emerald-700">
+                {pendingPayment.length} pendiente{pendingPayment.length !== 1 ? 's' : ''} de cobro
+              </span>
+            </div>
           </div>
         </div>
+
+        {/* ── Banner: caja cerrada ─────────────────────────────────────────────── */}
+        {!loadingShift && !shiftOpen && (
+          <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl p-6 text-center space-y-3">
+            <LockKeyhole size={40} className="mx-auto text-amber-500" />
+            <div>
+              <p className="font-bold text-amber-900 text-lg">Caja cerrada</p>
+              <p className="text-amber-700 text-sm">Abre un turno para registrar cobros</p>
+            </div>
+            <button
+              onClick={() => { setShiftInitial(''); setShiftNotes(''); setOpenShiftModal(true); }}
+              className="btn-primary px-8 py-2.5 mx-auto block">
+              Abrir caja ahora
+            </button>
+          </div>
+        )}
+
+        {/* ── Info turno activo ────────────────────────────────────────────────── */}
+        {shiftOpen && currentShift && (
+          <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-5 py-3 flex flex-wrap items-center gap-4 text-sm">
+            <span className="flex items-center gap-1.5 text-emerald-700 font-semibold">
+              <Clock size={14} />
+              Turno desde {new Date(currentShift.openedAt).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}
+            </span>
+            <span className="text-slate-400">|</span>
+            <span className="text-slate-600">Base: <strong>{fmt(Number(currentShift.initialCash))}</strong></span>
+            <span className="text-slate-400">|</span>
+            <span className="text-emerald-700">💵 Efectivo: <strong>{fmt(Number(currentShift.cashSales))}</strong></span>
+            {Number(currentShift.cardSales) > 0 && (
+              <span className="text-slate-600">💳 Tarjeta: <strong>{fmt(Number(currentShift.cardSales))}</strong></span>
+            )}
+            {Number(currentShift.totalTips) > 0 && (
+              <span className="text-emerald-600">🪙 Propinas: <strong>{fmt(Number(currentShift.totalTips))}</strong></span>
+            )}
+          </div>
+        )}
 
         {/* Filtros */}
         <div className="flex gap-2 flex-wrap">
@@ -805,6 +935,155 @@ export default function CajaPage() {
           </div>
         </div>
       )}
+      {/* ── MODAL ABRIR TURNO ──────────────────────────────────────────────────── */}
+      {openShiftModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center flex-none">
+                <Unlock size={20} className="text-emerald-600" />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-slate-900">Abrir caja</h2>
+                <p className="text-xs text-slate-500">{cashierName}</p>
+              </div>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-semibold text-slate-700 mb-1.5 block">
+                  Fondo inicial en efectivo *
+                </label>
+                <input
+                  type="number" inputMode="numeric" min="0"
+                  className="input text-xl text-center font-bold"
+                  placeholder="$ 0"
+                  value={shiftInitial}
+                  onChange={e => setShiftInitial(e.target.value)}
+                  autoFocus
+                />
+                <p className="text-xs text-slate-400 mt-1 text-center">
+                  Dinero en la gaveta al iniciar turno
+                </p>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-600 mb-1 block">Notas (opcional)</label>
+                <input className="input text-sm" placeholder="Ej: Turno mañana"
+                  value={shiftNotes} onChange={e => setShiftNotes(e.target.value)} />
+              </div>
+            </div>
+            <div className="flex gap-3 mt-6">
+              <button onClick={() => setOpenShiftModal(false)} className="flex-1 btn-outline py-3">
+                Cancelar
+              </button>
+              <button
+                onClick={() => openShift.mutate()}
+                disabled={openShift.isPending || !shiftInitial}
+                className="flex-1 btn-primary py-3 disabled:opacity-50">
+                {openShift.isPending ? 'Abriendo...' : 'Abrir caja'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL CERRAR TURNO ─────────────────────────────────────────────────── */}
+      {closeShiftModal && currentShift && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center flex-none">
+                <LockKeyhole size={20} className="text-amber-600" />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-slate-900">Cerrar turno</h2>
+                <p className="text-xs text-slate-500">{cashierName}</p>
+              </div>
+            </div>
+
+            {/* Resumen del turno */}
+            <div className="bg-slate-50 rounded-xl p-4 mb-4 space-y-1.5 text-sm">
+              <div className="flex justify-between text-slate-600">
+                <span>Fondo inicial</span>
+                <strong>{fmt(Number(currentShift.initialCash))}</strong>
+              </div>
+              <div className="flex justify-between text-slate-600">
+                <span>💵 Ventas efectivo</span>
+                <strong>{fmt(Number(currentShift.cashSales))}</strong>
+              </div>
+              <div className="flex justify-between font-semibold text-slate-800 border-t border-slate-200 pt-1.5">
+                <span>Efectivo esperado en caja</span>
+                <strong className="text-emerald-700">
+                  {fmt(Number(currentShift.initialCash) + Number(currentShift.cashSales))}
+                </strong>
+              </div>
+              {Number(currentShift.cardSales) > 0 && (
+                <div className="flex justify-between text-slate-600 pt-1 border-t border-slate-100">
+                  <span>💳 Ventas tarjeta</span>
+                  <strong>{fmt(Number(currentShift.cardSales))}</strong>
+                </div>
+              )}
+              {Number(currentShift.totalTips) > 0 && (
+                <div className="flex justify-between text-emerald-600">
+                  <span>🪙 Propinas totales</span>
+                  <strong>{fmt(Number(currentShift.totalTips))}</strong>
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="text-sm font-semibold text-slate-700 mb-1.5 block">
+                  Efectivo contado en caja *
+                </label>
+                <input
+                  type="number" inputMode="numeric" min="0"
+                  className="input text-xl text-center font-bold"
+                  placeholder="$ 0"
+                  value={shiftCounted}
+                  onChange={e => setShiftCounted(e.target.value)}
+                  autoFocus
+                />
+              </div>
+
+              {/* Preview descuadre */}
+              {shiftCounted && (
+                (() => {
+                  const expected = Number(currentShift.initialCash) + Number(currentShift.cashSales);
+                  const diff = Number(shiftCounted) - expected;
+                  return (
+                    <div className={`rounded-xl p-3 flex justify-between text-sm font-semibold ${
+                      Math.abs(diff) < 1 ? 'bg-emerald-50 text-emerald-700' :
+                      diff > 0 ? 'bg-blue-50 text-blue-700' : 'bg-red-50 text-red-700'
+                    }`}>
+                      <span>{Math.abs(diff) < 1 ? '✓ Sin descuadre' : diff > 0 ? '↑ Sobrante' : '↓ Faltante'}</span>
+                      <span>{Math.abs(diff) < 1 ? 'Cuadra perfecto' : fmt(Math.abs(diff))}</span>
+                    </div>
+                  );
+                })()
+              )}
+
+              <div>
+                <label className="text-xs font-medium text-slate-600 mb-1 block">Notas de cierre (opcional)</label>
+                <input className="input text-sm" placeholder="Observaciones del turno"
+                  value={shiftNotes} onChange={e => setShiftNotes(e.target.value)} />
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-5">
+              <button onClick={() => setCloseShiftModal(false)} className="flex-1 btn-outline py-3">
+                Cancelar
+              </button>
+              <button
+                onClick={() => closeShift.mutate()}
+                disabled={closeShift.isPending || !shiftCounted}
+                className="flex-1 py-3 bg-amber-500 text-white rounded-xl font-semibold hover:bg-amber-600 disabled:opacity-50 transition-colors">
+                {closeShift.isPending ? 'Cerrando...' : 'Cerrar turno'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </AppLayout>
   );
 }

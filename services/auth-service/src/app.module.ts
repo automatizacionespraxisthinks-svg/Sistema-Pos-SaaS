@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from './auth/auth.module';
 import { User } from './users/entities/user.entity';
 import { RefreshToken } from './auth/entities/refresh-token.entity';
+import { Tenant } from './auth/entities/tenant.entity';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
@@ -11,7 +12,7 @@ import { RefreshToken } from './auth/entities/refresh-token.entity';
       imports: [ConfigModule],
       useFactory: (cfg: ConfigService) => ({
         type: 'postgres', url: cfg.get('DATABASE_URL'),
-        entities: [User, RefreshToken], synchronize: true,
+        entities: [User, RefreshToken, Tenant], synchronize: true,
       }),
       inject: [ConfigService],
     }),

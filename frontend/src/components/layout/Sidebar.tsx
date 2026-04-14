@@ -1,18 +1,21 @@
 'use client';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+// (no local state needed)
 import {
   ShoppingCart, Package, ClipboardList, ChefHat,
-  BarChart3, LineChart, Settings, LogOut, Boxes, X, Menu, Download, Landmark,
+  BarChart3, LineChart, Settings, LogOut, Boxes, X, Landmark, BarChart2, Coins,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
+import { TenantBranding } from '@/hooks/useTenantTheme';
 
 const ALL_NAV = [
   { href: '/pos',       label: 'Punto de Venta', icon: ShoppingCart, roles: ['admin','super_admin','cashier','waiter'] },
   { href: '/caja',      label: 'Caja',            icon: Landmark,      roles: ['admin','super_admin','cashier'] },
+  { href: '/caja/cierre', label: 'Cierre de día',  icon: BarChart2,     roles: ['admin','super_admin'] },
   { href: '/orders',    label: 'Pedidos',         icon: ClipboardList, roles: ['admin','super_admin','cashier','waiter','viewer'] },
   { href: '/kitchen',   label: 'Cocina',          icon: ChefHat,       roles: ['admin','super_admin','kitchen'] },
+  { href: '/propinas',  label: 'Mis propinas',    icon: Coins,         roles: ['waiter'] },
   { href: '/inventory', label: 'Inventario',      icon: Boxes,         roles: ['admin','super_admin','viewer'] },
   { href: '/products',  label: 'Productos',       icon: Package,       roles: ['admin','super_admin'] },
   { href: '/dashboard', label: 'Dashboard',       icon: BarChart3,     roles: ['admin','super_admin','viewer'] },
@@ -23,37 +26,17 @@ const ALL_NAV = [
 interface Props {
   open: boolean;
   onClose: () => void;
+  tenant: TenantBranding;
 }
 
-export default function Sidebar({ open, onClose }: Props) {
+export default function Sidebar({ open, onClose, tenant }: Props) {
   const pathname = usePathname();
   const { user, logout } = useAuthStore();
   const router = useRouter();
-  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
-  const [showInstall, setShowInstall] = useState(false);
 
   // Filter nav by role
   const role = user?.role || '';
   const nav = ALL_NAV.filter(item => item.roles.includes(role));
-
-  // PWA install prompt
-  useEffect(() => {
-    const handler = (e: any) => {
-      e.preventDefault();
-      setDeferredPrompt(e);
-      setShowInstall(true);
-    };
-    window.addEventListener('beforeinstallprompt', handler);
-    return () => window.removeEventListener('beforeinstallprompt', handler);
-  }, []);
-
-  const handleInstall = async () => {
-    if (!deferredPrompt) return;
-    deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    if (outcome === 'accepted') setShowInstall(false);
-    setDeferredPrompt(null);
-  };
 
   const handleLogout = () => { logout(); router.push('/login'); };
 
@@ -81,11 +64,21 @@ export default function Sidebar({ open, onClose }: Props) {
       `}>
         {/* Header */}
         <div className="p-5 border-b border-slate-700 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-primary-600 rounded-lg flex items-center justify-center font-bold text-lg flex-none">P</div>
-            <div>
-              <p className="font-bold leading-tight">POS SaaS</p>
-              <p className="text-slate-400 text-xs">Omnicanal</p>
+          <div className="flex items-center gap-3 min-w-0">
+            {tenant.logoUrl ? (
+              <img
+                src={tenant.logoUrl}
+                alt={tenant.name}
+                className="w-9 h-9 rounded-lg object-contain bg-white flex-none border border-slate-600"
+              />
+            ) : (
+              <div className="w-9 h-9 bg-primary-600 rounded-lg flex items-center justify-center font-bold text-lg flex-none">
+                {tenant.name.charAt(0).toUpperCase()}
+              </div>
+            )}
+            <div className="min-w-0">
+              <p className="font-bold leading-tight truncate">{tenant.name}</p>
+              <p className="text-slate-400 text-xs">Sistema POS</p>
             </div>
           </div>
           {/* Close button — mobile only */}
@@ -111,15 +104,6 @@ export default function Sidebar({ open, onClose }: Props) {
 
         {/* Bottom */}
         <div className="p-3 border-t border-slate-700 space-y-1">
-          {/* Install PWA button */}
-          {showInstall && (
-            <button onClick={handleInstall}
-              className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-emerald-400 hover:bg-slate-800 transition-all w-full">
-              <Download size={16} className="flex-none" />
-              Instalar app
-            </button>
-          )}
-
           {/* User info */}
           {user && (
             <div className="flex items-center gap-3 px-3 py-2">
