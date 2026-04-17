@@ -47,7 +47,23 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto">{children}</main>
+        <main className="flex-1 overflow-y-auto relative">
+          {/* Marca de agua — logo del tenant en escala de grises */}
+          {tenant.logoUrl && (
+            <div
+              aria-hidden="true"
+              className="fixed inset-0 lg:left-64 flex items-center justify-center pointer-events-none select-none overflow-hidden"
+              style={{ zIndex: 0 }}>
+              <img
+                src={tenant.logoUrl}
+                alt=""
+                className="w-80 h-80 object-contain"
+                style={{ filter: 'grayscale(100%)', opacity: 0.055 }}
+              />
+            </div>
+          )}
+          <div className="relative" style={{ zIndex: 1 }}>{children}</div>
+        </main>
         <InstallPWA />
       </div>
     </div>

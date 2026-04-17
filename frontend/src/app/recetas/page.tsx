@@ -125,9 +125,19 @@ export default function RecetasPage() {
     setIngSearch(s => ({ ...s, [idx]: item.productName }));
   }
 
-  const filteredRecipes = (recipes as any[]).filter(r =>
-    r.productName?.toLowerCase().includes(search.toLowerCase())
-  );
+  // Búsqueda en tiempo real — activa desde 2 chars, busca en producto e ingredientes
+  const filteredRecipes = search.trim().length >= 2
+    ? (recipes as any[]).filter(r => {
+        const q = search.toLowerCase();
+        return (
+          r.productName?.toLowerCase().includes(q) ||
+          (r.ingredients ?? []).some((ing: any) =>
+            ing.ingredientName?.toLowerCase().includes(q) ||
+            ing.unit?.toLowerCase().includes(q)
+          )
+        );
+      })
+    : (recipes as any[]);
 
   const recipeProductIds = new Set((recipes as any[]).map(r => r.productId));
   const productsWithoutRecipe = products.filter(p => !recipeProductIds.has(p.id));
@@ -159,13 +169,19 @@ export default function RecetasPage() {
 
         {/* Buscador */}
         <div className="relative max-w-sm">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
           <input
             className="input pl-9 text-sm"
-            placeholder="Buscar por producto..."
+            placeholder="Buscar por producto o ingrediente..."
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
+          {search && (
+            <button onClick={() => setSearch('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+              <X size={14} />
+            </button>
+          )}
         </div>
 
         {/* Info box */}
@@ -180,8 +196,10 @@ export default function RecetasPage() {
         ) : filteredRecipes.length === 0 ? (
           <div className="text-center py-20 text-slate-400 space-y-2">
             <BookOpen size={40} className="mx-auto opacity-30" />
-            <p className="font-semibold">Sin recetas configuradas</p>
-            <p className="text-sm">Agrega la primera receta con el botón de arriba</p>
+            <p className="font-semibold">
+              {search.trim().length >= 2 ? `Sin resultados para "${search}"` : 'Sin recetas configuradas'}
+            </p>
+            {search.trim().length < 2 && <p className="text-sm">Agrega la primera receta con el botón de arriba</p>}
           </div>
         ) : (
           <div className="space-y-3">

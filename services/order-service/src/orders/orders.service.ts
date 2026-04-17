@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as http from 'http';
@@ -114,6 +114,14 @@ export class OrdersService {
     };
     if (!allowed[order.status]?.includes(dto.status))
       throw new BadRequestException(`Cannot transition from ${order.status} to ${dto.status}`);
+
+    // Solo cajeros (o admin) pueden marcar como pagado
+    if (dto.status === OrderStatus.PAID) {
+      const cashierRoles = ['cashier', 'admin', 'super_admin'];
+      if (actorRole && !cashierRoles.includes(actorRole)) {
+        throw new ForbiddenException('Solo los cajeros pueden registrar el pago de un pedido');
+      }
+    }
 
     const prevStatus = order.status;
     order.status = dto.status;

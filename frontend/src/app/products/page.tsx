@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import AppLayout from '@/components/layout/AppLayout';
 import { useRoleGuard } from '@/hooks/useRoleGuard';
 import { productsApi, categoriesApi, fmt } from '@/lib/api';
-import { ImagePlus, X, Upload } from 'lucide-react';
+import { ImagePlus, X, Upload, Search } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const EMPTY = {
@@ -49,6 +49,7 @@ export default function ProductsPage() {
   const qc = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
 
+  const [search,     setSearch]     = useState('');
   const [modal,      setModal]      = useState(false);
   const [form,       setForm]       = useState<any>(EMPTY);
   const [editing,    setEditing]    = useState<string | null>(null);
@@ -64,7 +65,22 @@ export default function ProductsPage() {
     queryKey: ['categories'],
     queryFn: () => categoriesApi.list().then(r => r.data),
   });
-  const products = (pd as any)?.data ?? [];
+  const allProducts = (pd as any)?.data ?? [];
+
+  // Búsqueda en tiempo real — activa desde 2 caracteres, busca en todas las columnas
+  const products = search.trim().length >= 2
+    ? allProducts.filter((p: any) => {
+        const q = search.toLowerCase();
+        return (
+          p.name?.toLowerCase().includes(q) ||
+          p.category?.name?.toLowerCase().includes(q) ||
+          p.sku?.toLowerCase().includes(q) ||
+          p.description?.toLowerCase().includes(q) ||
+          String(p.price).includes(q) ||
+          (p.status === 'active' ? 'activo' : p.status === 'inactive' ? 'inactivo' : 'sin stock').includes(q)
+        );
+      })
+    : allProducts;
 
   const save = useMutation({
     mutationFn: () => {
@@ -148,9 +164,26 @@ export default function ProductsPage() {
   return (
     <AppLayout>
       <div className="p-6">
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-4">
           <h1 className="text-xl font-bold text-slate-900">Productos</h1>
           <button onClick={openNew} className="btn-primary text-sm">+ Nuevo producto</button>
+        </div>
+
+        {/* Barra de búsqueda */}
+        <div className="relative mb-5 max-w-sm">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+          <input
+            className="input pl-9 text-sm"
+            placeholder="Buscar por nombre, categoría, SKU, precio..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+          {search && (
+            <button onClick={() => setSearch('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+              <X size={14} />
+            </button>
+          )}
         </div>
 
         <div className="card overflow-hidden p-0">
@@ -164,7 +197,13 @@ export default function ProductsPage() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {products.length === 0 && (
-                <tr><td colSpan={8} className="text-center py-12 text-slate-400">Sin productos. ¡Crea el primero!</td></tr>
+                <tr>
+                  <td colSpan={8} className="text-center py-12 text-slate-400">
+                    {search.trim().length >= 2
+                      ? `Sin resultados para "${search}"`
+                      : 'Sin productos. ¡Crea el primero!'}
+                  </td>
+                </tr>
               )}
               {products.map((p: any) => (
                 <tr key={p.id} className="hover:bg-slate-50 transition-colors">

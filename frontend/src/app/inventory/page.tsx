@@ -17,6 +17,7 @@ const EMPTY_FORM = { productId: '', productName: '', quantity: '', type: 'in', r
 export default function InventoryPage() {
   useRoleGuard('/inventory');
   const qc = useQueryClient();
+  const [tableSearch, setTableSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState<any>(EMPTY_FORM);
 
@@ -66,12 +67,44 @@ export default function InventoryPage() {
     setShowModal(true);
   }
 
+  // Filtro de tabla — activo desde 2 caracteres, busca en todas las columnas
+  const filteredItems = tableSearch.trim().length >= 2
+    ? (items as any[]).filter((i: any) => {
+        const q = tableSearch.toLowerCase();
+        const status = Number(i.quantity) <= Number(i.minStock) ? 'bajo stock' : 'ok';
+        return (
+          i.productName?.toLowerCase().includes(q) ||
+          i.unit?.toLowerCase().includes(q) ||
+          String(i.quantity).includes(q) ||
+          String(i.minStock).includes(q) ||
+          status.includes(q)
+        );
+      })
+    : (items as any[]);
+
   return (
     <AppLayout>
       <div className="p-6">
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-4">
           <h1 className="text-xl font-bold text-slate-900">Inventario</h1>
           <button onClick={openModal} className="btn-primary text-sm">+ Ajustar stock</button>
+        </div>
+
+        {/* Barra de búsqueda */}
+        <div className="relative mb-5 max-w-sm">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+          <input
+            className="input pl-9 text-sm"
+            placeholder="Buscar por nombre, unidad, cantidad..."
+            value={tableSearch}
+            onChange={e => setTableSearch(e.target.value)}
+          />
+          {tableSearch && (
+            <button onClick={() => setTableSearch('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+              <X size={14} />
+            </button>
+          )}
         </div>
         {(lowStock as any[]).length > 0 && (
           <div className="mb-5 p-4 bg-amber-50 border border-amber-200 rounded-xl">
@@ -92,8 +125,16 @@ export default function InventoryPage() {
                 ))}</tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {(items as any[]).length === 0 && <tr><td colSpan={5} className="text-center py-12 text-slate-400">Sin registros de inventario. Usa "Ajustar stock" para agregar.</td></tr>}
-                {(items as any[]).map((item: any) => {
+                {filteredItems.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="text-center py-12 text-slate-400">
+                      {tableSearch.trim().length >= 2
+                        ? `Sin resultados para "${tableSearch}"`
+                        : 'Sin registros de inventario. Usa "Ajustar stock" para agregar.'}
+                    </td>
+                  </tr>
+                )}
+                {filteredItems.map((item: any) => {
                   const low = Number(item.quantity) <= Number(item.minStock);
                   return (
                     <tr key={item.id} className="hover:bg-slate-50">
