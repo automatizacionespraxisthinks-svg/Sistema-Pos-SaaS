@@ -9,11 +9,12 @@ import {
   TrendingUp, TrendingDown, DollarSign, ShoppingCart,
   Receipt, Percent, ChevronLeft, ChevronRight, FileDown, Calendar, Coins,
 } from 'lucide-react';
-import { format, addDays, addWeeks, addMonths, parseISO, startOfWeek, endOfWeek } from 'date-fns';
+import { format, addDays, addWeeks, addMonths, parseISO, startOfWeek, endOfWeek, getDaysInMonth } from 'date-fns';
 import { es } from 'date-fns/locale';
 import AppLayout from '@/components/layout/AppLayout';
 import { useRoleGuard } from '@/hooks/useRoleGuard';
 import { analyticsApi, fmt } from '@/lib/api';
+import { useTenantTheme, TenantBranding } from '@/hooks/useTenantTheme';
 
 // ─── types ────────────────────────────────────────────────────────────────────
 
@@ -62,10 +63,65 @@ function pct(current: number, prev: number): number {
   return Math.round(((current - prev) / prev) * 100);
 }
 
-function trendLabel(period: Period, bucket: string): string {
-  const d = parseISO(bucket);
-  if (period === 'day') return format(d, 'HH:mm');
-  return format(d, 'd MMM', { locale: es });
+const DAY_LABELS_SHORT = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+
+/**
+ * Genera el esqueleto completo de puntos para la gráfica y rellena con los
+ * datos reales del backend. Garantiza siempre:
+ *   day   → 24 puntos (horas 00–23)
+ *   week  → 7 puntos  (lun–dom de la semana que contiene refDate)
+ *   month → 28/29/30/31 puntos (todos los días del mes de refDate)
+ */
+function buildTrendData(period: Period, refDate: string, trend: TrendRow[]) {
+  const ref = parseISO(refDate);
+
+  if (period === 'day') {
+    const byHour = new Map<number, TrendRow>();
+    trend.forEach(t => {
+      const h = Number(format(parseISO(t.bucket), 'H'));
+      byHour.set(h, t);
+    });
+    return Array.from({ length: 24 }, (_, h) => {
+      const row = byHour.get(h);
+      return {
+        label:   `${String(h).padStart(2, '0')}h`,
+        revenue: row?.revenue ?? 0,
+        orders:  row?.orders  ?? 0,
+      };
+    });
+  }
+
+  if (period === 'week') {
+    const monday = startOfWeek(ref, { weekStartsOn: 1 });
+    const byDate = new Map<string, TrendRow>();
+    trend.forEach(t => byDate.set(t.bucket.slice(0, 10), t));
+    return Array.from({ length: 7 }, (_, i) => {
+      const day     = addDays(monday, i);
+      const dateStr = format(day, 'yyyy-MM-dd');
+      const row     = byDate.get(dateStr);
+      return {
+        label:   `${DAY_LABELS_SHORT[i]} ${format(day, 'd')}`,
+        revenue: row?.revenue ?? 0,
+        orders:  row?.orders  ?? 0,
+      };
+    });
+  }
+
+  // month — número exacto de días del mes (28/29/30/31)
+  const totalDays = getDaysInMonth(ref);
+  const year      = ref.getFullYear();
+  const month     = ref.getMonth();
+  const byDay     = new Map<number, TrendRow>();
+  trend.forEach(t => byDay.set(parseISO(t.bucket).getDate(), t));
+  return Array.from({ length: totalDays }, (_, i) => {
+    const dayNum = i + 1;
+    const row    = byDay.get(dayNum);
+    return {
+      label:   String(dayNum),
+      revenue: row?.revenue ?? 0,
+      orders:  row?.orders  ?? 0,
+    };
+  });
 }
 
 // ─── sub-components ───────────────────────────────────────────────────────────
@@ -133,6 +189,7 @@ function exportPDF(
   paymentMethods: PayMethod[],
   trend: TrendRow[],
   period: Period,
+  tenant: TenantBranding,
 ) {
   const win = window.open('', '_blank', 'width=900,height=700');
   if (!win) return;
@@ -146,6 +203,14 @@ function exportPDF(
     fmt(t.revenue),
   ]);
 
+  const totalProductRevenue = topProducts.reduce((s, p) => s + p.revenue, 0);
+  const netRevenue = (overview?.revenue ?? 0) - (overview?.tax ?? 0);
+  const prevRevenue = overview?.prev?.revenue ?? 0;
+  const vsLabel = prevRevenue
+    ? (((( overview?.revenue ?? 0) - prevRevenue) / prevRevenue) * 100).toFixed(1) + '%'
+    : '—';
+  const vsColor = (overview?.revenue ?? 0) >= prevRevenue ? '#059669' : '#dc2626';
+
   const html = `<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -155,51 +220,116 @@ function exportPDF(
     @page { margin: 2cm; size: A4 portrait; }
     * { box-sizing: border-box; }
     body { font-family: Arial, Helvetica, sans-serif; color: #0f172a; font-size: 11px; line-height: 1.5; }
-    h1 { color: #2563eb; font-size: 22px; margin: 0 0 2px; }
-    .subtitle { color: #64748b; font-size: 10px; margin-bottom: 20px; }
-    h2 { font-size: 13px; color: #1e40af; border-bottom: 2px solid #2563eb; padding-bottom: 3px; margin: 20px 0 10px; }
-    .kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 4px; }
-    .kpi { border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 12px; }
-    .kpi-label { color: #64748b; font-size: 9px; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 2px; }
-    .kpi-value { font-size: 17px; font-weight: 700; }
+    .page-header { display: flex; justify-content: space-between; align-items: flex-start; padding-bottom: 14px; border-bottom: 2px solid #2563eb; margin-bottom: 14px; }
+    .biz-row { display: flex; align-items: center; gap: 12px; }
+    .biz-logo { width: 46px; height: 46px; background: #2563eb; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 20px; font-weight: 700; flex-shrink: 0; }
+    .biz-logo img { width: 46px; height: 46px; border-radius: 8px; object-fit: contain; border: 1px solid #e2e8f0; }
+    .biz-name { font-size: 17px; font-weight: 700; color: #0f172a; }
+    .biz-tag  { font-size: 9px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 1px; }
+    .biz-contact { text-align: right; font-size: 9px; color: #64748b; line-height: 1.8; }
+    .biz-contact strong { color: #1e293b; }
+    .report-meta { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 9px 14px; margin-bottom: 18px; display: flex; gap: 28px; flex-wrap: wrap; }
+    .meta-item .meta-label { color: #94a3b8; font-size: 8px; text-transform: uppercase; letter-spacing: 0.05em; }
+    .meta-item .meta-value { font-weight: 600; color: #1e293b; font-size: 11px; }
+    h2 { font-size: 12px; color: #1e40af; border-bottom: 2px solid #2563eb; padding-bottom: 3px; margin: 20px 0 8px; }
+    .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; margin-bottom: 4px; }
+    .kpi { border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 10px; }
+    .kpi-label { color: #64748b; font-size: 8px; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 2px; }
+    .kpi-value { font-size: 14px; font-weight: 700; }
+    .kpi-sub   { font-size: 8px; color: #94a3b8; margin-top: 1px; }
     table { width: 100%; border-collapse: collapse; font-size: 10px; }
     th { background: #f1f5f9; padding: 6px 8px; text-align: left; font-size: 9px; text-transform: uppercase; letter-spacing: 0.04em; }
     td { padding: 6px 8px; border-bottom: 1px solid #f1f5f9; }
     .right { text-align: right; }
+    tr.total-row td { background: #f8fafc; font-weight: 700; border-top: 2px solid #cbd5e1; }
+    .badge { display: inline-block; padding: 1px 7px; border-radius: 9px; font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; }
+    .badge-cash     { background: #d1fae5; color: #065f46; }
+    .badge-card     { background: #dbeafe; color: #1e40af; }
+    .badge-transfer { background: #fef3c7; color: #92400e; }
+    .badge-mixed    { background: #ede9fe; color: #5b21b6; }
     .footer { margin-top: 32px; color: #94a3b8; font-size: 9px; text-align: center; border-top: 1px solid #e2e8f0; padding-top: 8px; }
     @media print { body { print-color-adjust: exact; -webkit-print-color-adjust: exact; } }
   </style>
 </head>
 <body>
-  <h1>Reporte de Analítica</h1>
-  <p class="subtitle">
-    Período: <strong>${periodLabel}</strong> &nbsp;|&nbsp;
-    Generado: ${new Date().toLocaleString('es-CO', { dateStyle: 'long', timeStyle: 'short' })}
-  </p>
+
+  <!-- Encabezado del negocio -->
+  <div class="page-header">
+    <div class="biz-row">
+      <div class="biz-logo">
+        ${tenant.logoUrl
+          ? `<img src="${tenant.logoUrl}" alt="${tenant.name}" />`
+          : tenant.name.charAt(0).toUpperCase()
+        }
+      </div>
+      <div>
+        <div class="biz-name">${tenant.name}</div>
+        <div class="biz-tag">Reporte de Analítica</div>
+      </div>
+    </div>
+    <div class="biz-contact">
+      ${tenant.taxId   ? `<div>NIT / RUT: <strong>${tenant.taxId}</strong></div>` : ''}
+      ${tenant.phone   ? `<div>Tel: ${tenant.phone}</div>` : ''}
+      ${tenant.address ? `<div>${tenant.address}</div>` : ''}
+    </div>
+  </div>
+
+  <!-- Metadatos del reporte -->
+  <div class="report-meta">
+    <div class="meta-item"><div class="meta-label">Período</div><div class="meta-value">${periodLabel}</div></div>
+    <div class="meta-item"><div class="meta-label">Vista</div><div class="meta-value">${period === 'day' ? 'Diaria' : period === 'week' ? 'Semanal' : 'Mensual'}</div></div>
+    <div class="meta-item"><div class="meta-label">Generado</div><div class="meta-value">${new Date().toLocaleString('es-CO', { dateStyle: 'long', timeStyle: 'short' })}</div></div>
+  </div>
 
   <h2>Resumen General</h2>
   <div class="kpis">
     <div class="kpi"><div class="kpi-label">Ingresos Totales</div><div class="kpi-value">${fmt(overview?.revenue ?? 0)}</div></div>
     <div class="kpi"><div class="kpi-label">Pedidos</div><div class="kpi-value">${overview?.orders ?? 0}</div></div>
     <div class="kpi"><div class="kpi-label">Ticket Promedio</div><div class="kpi-value">${fmt(overview?.avgTicket ?? 0)}</div></div>
+    <div class="kpi"><div class="kpi-label">Ingresos Netos</div><div class="kpi-value">${fmt(netRevenue)}</div></div>
     <div class="kpi"><div class="kpi-label">IVA Recaudado</div><div class="kpi-value">${fmt(overview?.tax ?? 0)}</div></div>
     <div class="kpi"><div class="kpi-label">Descuentos</div><div class="kpi-value">${fmt(overview?.discount ?? 0)}</div></div>
     <div class="kpi"><div class="kpi-label">Propinas</div><div class="kpi-value" style="color:#0d9488">${fmt(overview?.totalTips ?? 0)}</div></div>
-    <div class="kpi"><div class="kpi-label">Ingresos Netos</div><div class="kpi-value">${fmt((overview?.revenue ?? 0) - (overview?.tax ?? 0))}</div></div>
+    <div class="kpi">
+      <div class="kpi-label">vs Período Anterior</div>
+      <div class="kpi-value" style="color:${vsColor}">${vsLabel}</div>
+      <div class="kpi-sub">${fmt(prevRevenue)} anterior</div>
+    </div>
   </div>
 
   ${topProducts.length > 0 ? `
   <h2>Productos Más Vendidos</h2>
   <table>
-    <thead><tr><th>Producto</th><th class="right">Unidades</th><th class="right">Ingresos</th><th class="right">Pedidos</th></tr></thead>
-    <tbody>${rows(topProducts.map(p => [p.productName, String(p.qty), fmt(p.revenue), String(p.orderCount)]))}</tbody>
+    <thead>
+      <tr><th>#</th><th>Producto</th><th class="right">Unidades</th><th class="right">Pedidos</th><th class="right">Ingresos</th><th class="right">% Part.</th></tr>
+    </thead>
+    <tbody>
+      ${topProducts.map((p, i) => `<tr>
+        <td>${i + 1}</td>
+        <td>${p.productName}</td>
+        <td class="right">${p.qty}</td>
+        <td class="right">${p.orderCount}</td>
+        <td class="right">${fmt(p.revenue)}</td>
+        <td class="right">${totalProductRevenue > 0 ? ((p.revenue / totalProductRevenue) * 100).toFixed(1) + '%' : '—'}</td>
+      </tr>`).join('')}
+      <tr class="total-row">
+        <td colspan="4">Total</td>
+        <td class="right">${fmt(totalProductRevenue)}</td>
+        <td class="right">100%</td>
+      </tr>
+    </tbody>
   </table>` : ''}
 
   ${paymentMethods.length > 0 ? `
   <h2>Métodos de Pago</h2>
   <table>
     <thead><tr><th>Método</th><th class="right">Transacciones</th><th class="right">Total</th><th class="right">Propinas</th></tr></thead>
-    <tbody>${rows(paymentMethods.map(p => [PAYMENT_NAMES[p.method] || p.method, String(p.count), fmt(p.total), fmt(p.totalTips ?? 0)]))}</tbody>
+    <tbody>${paymentMethods.map(p => `<tr>
+      <td><span class="badge badge-${p.method}">${PAYMENT_NAMES[p.method] || p.method}</span></td>
+      <td class="right">${p.count}</td>
+      <td class="right">${fmt(p.total)}</td>
+      <td class="right">${fmt(p.totalTips ?? 0)}</td>
+    </tr>`).join('')}</tbody>
   </table>` : ''}
 
   ${trend.length > 0 ? `
@@ -209,7 +339,11 @@ function exportPDF(
     <tbody>${rows(trendRows)}</tbody>
   </table>` : ''}
 
-  <div class="footer">POS SaaS · Omnicanal · Reporte generado automáticamente · ${new Date().toLocaleDateString('es-CO')}</div>
+  <div class="footer">
+    ${tenant.name} &nbsp;|&nbsp;
+    Generado el ${new Date().toLocaleString('es-CO', { dateStyle: 'long', timeStyle: 'short' })} &nbsp;|&nbsp;
+    Documento de uso interno
+  </div>
 </body>
 </html>`;
 
@@ -223,6 +357,7 @@ function exportPDF(
 
 export default function AnalyticsPage() {
   useRoleGuard('/analytics');
+  const tenant = useTenantTheme();
 
   const [period, setPeriod] = useState<Period>('day');
   const [refDate, setRefDate] = useState(todayStr);
@@ -259,11 +394,8 @@ export default function AnalyticsPage() {
   const isToday     = refDate === todayStr();
   const isLoading   = loadingOv || loadingTrend || loadingProd || loadingPay;
 
-  const trendData = trend.map(t => ({
-    label:   trendLabel(period, t.bucket),
-    revenue: t.revenue,
-    orders:  t.orders,
-  }));
+  // Esqueleto completo: siempre 24h / 7 días / N días del mes
+  const trendData = buildTrendData(period, refDate, trend);
 
   const productsData = topProducts.slice(0, 8).map(p => ({
     name:    p.productName.length > 22 ? p.productName.slice(0, 20) + '…' : p.productName,
@@ -277,8 +409,8 @@ export default function AnalyticsPage() {
   const ordersChange  = pct(overview?.orders  ?? 0, overview?.prev?.orders  ?? 0);
 
   const handleExport = useCallback(() => {
-    exportPDF(periodLabel, overview, topProducts, paymentMethods, trend, period);
-  }, [periodLabel, overview, topProducts, paymentMethods, trend, period]);
+    exportPDF(periodLabel, overview, topProducts, paymentMethods, trend, period, tenant);
+  }, [periodLabel, overview, topProducts, paymentMethods, trend, period, tenant]);
 
   return (
     <AppLayout>
@@ -420,7 +552,12 @@ export default function AnalyticsPage() {
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#94a3b8' }} tickLine={false} axisLine={false} />
+                <XAxis
+                  dataKey="label"
+                  tick={{ fontSize: 11, fill: '#94a3b8' }}
+                  tickLine={false} axisLine={false}
+                  interval={period === 'day' ? 1 : period === 'week' ? 0 : 4}
+                />
                 <YAxis
                   tickFormatter={v => `$${(v / 1000).toFixed(0)}k`}
                   tick={{ fontSize: 11, fill: '#94a3b8' }}
@@ -552,16 +689,18 @@ export default function AnalyticsPage() {
         {period === 'day' && (
           <div className="card">
             <SectionTitle>Distribución por hora del día</SectionTitle>
-            {loadingHourly ? (
-              <EmptyState text="Cargando…" />
-            ) : hourly.every(h => h.revenue === 0) ? (
-              <EmptyState text="Sin ventas hoy" />
+            {trendData.every(h => h.revenue === 0) ? (
+              <EmptyState text="Sin ventas en este día" />
             ) : (
               <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={hourly} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+                {/* Usa trendData (ya en hora local) para evitar el desfase UTC */}
+                <BarChart
+                  data={trendData}
+                  margin={{ top: 4, right: 4, left: 0, bottom: 0 }}
+                >
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
                   <XAxis
-                    dataKey="label" interval={2}
+                    dataKey="label" interval={1}
                     tick={{ fontSize: 10, fill: '#94a3b8' }}
                     tickLine={false} axisLine={false}
                   />

@@ -103,11 +103,13 @@ export class OrdersService {
 
   async updateStatus(tenantId: string, id: string, dto: UpdateOrderStatusDto, actorId?: string, actorRole?: string) {
     const order = await this.findOne(tenantId, id);
+    // Cualquier estado activo puede transicionar a PAID (el cajero paga cuando el
+    // cliente lo solicita, independientemente del estado de cocina).
     const allowed: Record<OrderStatus, OrderStatus[]> = {
-      [OrderStatus.PENDING]:   [OrderStatus.CONFIRMED, OrderStatus.CANCELLED],
-      [OrderStatus.CONFIRMED]: [OrderStatus.PREPARING, OrderStatus.CANCELLED],
-      [OrderStatus.PREPARING]: [OrderStatus.READY, OrderStatus.CANCELLED],
-      [OrderStatus.READY]:     [OrderStatus.DELIVERED, OrderStatus.PAID, OrderStatus.CANCELLED],
+      [OrderStatus.PENDING]:   [OrderStatus.CONFIRMED, OrderStatus.CANCELLED, OrderStatus.PAID],
+      [OrderStatus.CONFIRMED]: [OrderStatus.PREPARING, OrderStatus.CANCELLED, OrderStatus.PAID],
+      [OrderStatus.PREPARING]: [OrderStatus.READY,     OrderStatus.CANCELLED, OrderStatus.PAID],
+      [OrderStatus.READY]:     [OrderStatus.DELIVERED, OrderStatus.PAID,      OrderStatus.CANCELLED],
       [OrderStatus.DELIVERED]: [OrderStatus.PAID],
       [OrderStatus.PAID]:      [],
       [OrderStatus.CANCELLED]: [],

@@ -23,7 +23,9 @@
       "Bash(done)",
       "Bash(ls -la \"C:\\\\Users\\\\fredd\\\\OneDrive\\\\Documentos\\\\PRAXIS Automatizaciones\\\\Softwares\\\\pos-saas-v2\\\\frontend\\\\tailwind.config.\"*)",
       "Bash(npx tsc:*)",
-      "Bash(docker compose:*)"
+      "Bash(docker compose:*)",
+      "Bash(not exist:*)",
+      "Bash(docker exec *)"
     ]
   }
 }

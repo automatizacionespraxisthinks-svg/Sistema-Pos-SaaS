@@ -80,13 +80,13 @@ export default function POSPage() {
       });
       // Confirmar de inmediato → va a cocina
       await ordersApi.updateStatus(res.data.id, 'confirmed');
-      // Crear ticket en cocina
-      await kitchenApi.create({
+      // Crear ticket en cocina (fire-and-forget — si falla no bloquea el pedido)
+      kitchenApi.create({
         orderId:     res.data.id,
         orderNumber: res.data.orderNumber,
         tableNumber: tableNumber || undefined,
         items: items.map(i => ({ productName: i.productName, quantity: i.quantity, notes: i.notes })),
-      });
+      }).catch(() => { /* kitchen ticket optional — pedido ya fue creado */ });
       return res;
     },
     onSuccess: (res) => {
@@ -99,9 +99,9 @@ export default function POSPage() {
     onError: () => toast.error('Error al crear el pedido'),
   });
 
-  // Validación: dine_in con mesa requiere mesero
+  // El mesero es recomendado para mesas pero no bloquea el envío
   const needsWaiter = orderType === 'dine_in' && !!tableNumber && !waiterId;
-  const canSend     = items.length > 0 && !needsWaiter;
+  const canSend     = items.length > 0;
 
   // ── cart panel (compartido desktop y mobile) ─────────────────────────────────
 

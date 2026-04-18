@@ -94,7 +94,7 @@ export default function Sidebar({ open, onClose, tenant }: Props) {
         {/* Nav */}
         <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto min-h-0 scrollbar-thin">
           {nav.map(({ href, label, icon: Icon }) => {
-            const active = pathname.startsWith(href);
+            const active = pathname === href;
             return (
               <Link key={href} href={href} onClick={handleNavClick}
                 className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all ${

@@ -4,7 +4,7 @@ import { ApiProperty } from '@nestjs/swagger';
 import { OrderType, OrderStatus } from '../entities/order.entity';
 
 export class CreateOrderItemDto {
-  @IsUUID() productId: string;
+  @IsString() productId: string;   // ID de referencia entre servicios, no necesita ser UUID estricto
   @IsString() productName: string;
   @Type(() => Number) @IsNumber() @Min(0) unitPrice: number;
   @Type(() => Number) @IsNumber() @Min(1) quantity: number;
