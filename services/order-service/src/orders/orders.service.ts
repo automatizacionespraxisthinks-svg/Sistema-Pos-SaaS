@@ -7,6 +7,41 @@ import { OrderItem } from './entities/order-item.entity';
 import { CreateOrderDto, UpdateOrderStatusDto, OrderFilterDto, UpdateOrderItemsDto } from './dto/order.dto';
 import { auditLog } from './audit-client';
 
+/** Fire-and-forget: notifica a cocina cuando el pedido llega a un estado
+ *  terminal para que el ticket desaparezca de la pantalla de cocina.
+ *  DELIVERED / PAID  → ticket pasa a READY   (ya no requiere acción)
+ *  CANCELLED         → ticket pasa a CANCELLED                        */
+function syncKitchenTicket(tenantId: string, orderId: string, newStatus: OrderStatus) {
+  const statusMap: Partial<Record<OrderStatus, string>> = {
+    [OrderStatus.DELIVERED]: 'ready',
+    [OrderStatus.PAID]:      'ready',
+    [OrderStatus.CANCELLED]: 'cancelled',
+  };
+  const kitchenStatus = statusMap[newStatus];
+  if (!kitchenStatus) return;
+
+  const kitchenUrl = process.env.KITCHEN_SERVICE_URL || 'http://localhost:3007';
+  const body = JSON.stringify({ status: kitchenStatus });
+  try {
+    const parsed = new URL(`${kitchenUrl}/kitchen/tickets/by-order/${orderId}/status`);
+    const req = http.request({
+      hostname: parsed.hostname,
+      port:     Number(parsed.port) || 80,
+      path:     parsed.pathname,
+      method:   'PATCH',
+      headers: {
+        'Content-Type':   'application/json',
+        'Content-Length': Buffer.byteLength(body),
+        'x-tenant-id':    tenantId,
+      },
+    }, (res) => { res.resume(); });
+    req.on('error', () => {});
+    req.setTimeout(3000, () => { req.destroy(); });
+    req.write(body);
+    req.end();
+  } catch { /* silent */ }
+}
+
 /** Fire-and-forget: descuenta inventario al pagar un pedido */
 function deductInventory(tenantId: string, items: { productId: string; productName: string; quantity: number }[]) {
   const inventoryUrl = process.env.INVENTORY_SERVICE_URL || 'http://localhost:3004';
@@ -139,6 +174,9 @@ export class OrdersService {
         quantity:    i.quantity,
       })));
     }
+
+    // Sincronizar cocina: eliminar ticket de la pantalla KDS (fire-and-forget)
+    syncKitchenTicket(tenantId, saved.id, dto.status);
 
     const action = dto.status === OrderStatus.CANCELLED ? 'CANCEL_ORDER' : 'UPDATE_ORDER_STATUS';
     auditLog({

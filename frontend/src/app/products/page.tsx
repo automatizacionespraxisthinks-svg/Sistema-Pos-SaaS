@@ -170,7 +170,7 @@ export default function ProductsPage() {
         </div>
 
         {/* Barra de búsqueda */}
-        <div className="relative mb-5 max-w-sm">
+        <div className="relative mb-5">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
           <input
             className="input pl-9 text-sm"
