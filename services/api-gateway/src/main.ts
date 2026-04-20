@@ -13,6 +13,7 @@ const SERVICE_MAP: Record<string, string> = {
   '/api/products':    process.env.PRODUCT_SERVICE_URL     || 'http://localhost:3003',
   '/api/categories':  process.env.PRODUCT_SERVICE_URL     || 'http://localhost:3003',
   '/api/orders':      process.env.ORDER_SERVICE_URL       || 'http://localhost:3004',
+  '/api/tables':      process.env.ORDER_SERVICE_URL       || 'http://localhost:3004',
   '/api/inventory':   process.env.INVENTORY_SERVICE_URL   || 'http://localhost:3005',
   '/api/payments':    process.env.PAYMENT_SERVICE_URL     || 'http://localhost:3006',
   '/api/cash-shifts': process.env.PAYMENT_SERVICE_URL     || 'http://localhost:3006',

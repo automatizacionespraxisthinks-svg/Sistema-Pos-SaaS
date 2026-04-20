@@ -4,7 +4,7 @@ import { Repository } from 'typeorm';
 import * as http from 'http';
 import { Order, OrderStatus, OrderType, PaymentStatus } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
-import { CreateOrderDto, UpdateOrderStatusDto, OrderFilterDto, UpdateOrderItemsDto } from './dto/order.dto';
+import { CreateOrderDto, UpdateOrderStatusDto, OrderFilterDto, UpdateOrderItemsDto, CreateOrderItemDto } from './dto/order.dto';
 import { auditLog } from './audit-client';
 
 /** Fire-and-forget: notifica a cocina cuando el pedido llega a un estado
@@ -190,6 +190,86 @@ export class OrdersService {
       previousValue: { status: prevStatus },
       newValue:      { status: dto.status, reason: dto.reason },
       description: `Pedido ${order.orderNumber}: ${prevStatus} → ${dto.status}${dto.reason ? ` (${dto.reason})` : ''}`,
+    });
+
+    return saved;
+  }
+
+  /** Retorna el pedido abierto (no pagado/cancelado) de una mesa, o null si la mesa está libre. */
+  async getOpenOrderForTable(tenantId: string, tableNumber: string) {
+    const OPEN = [
+      OrderStatus.PENDING, OrderStatus.CONFIRMED,
+      OrderStatus.PREPARING, OrderStatus.READY, OrderStatus.DELIVERED,
+    ];
+    const orders = await this.orderRepo.find({
+      where: OPEN.map(status => ({ tenantId, tableNumber, status })),
+      relations: ['items'],
+      order:     { createdAt: 'DESC' },
+      take: 1,
+    });
+    return orders[0] ?? null;
+  }
+
+  /** Agrega items a un pedido abierto (misma productId → suma cantidad; nuevo → inserta).
+   *  Recalcula subtotal/tax/total y emite evento de auditoría. */
+  async appendItems(
+    tenantId: string, orderId: string,
+    dto: { items: CreateOrderItemDto[] },
+    actorId?: string, actorRole?: string,
+  ) {
+    const order = await this.orderRepo.findOne({ where: { id: orderId, tenantId }, relations: ['items'] });
+    if (!order) throw new NotFoundException('Order not found');
+    if ([OrderStatus.PAID, OrderStatus.CANCELLED].includes(order.status))
+      throw new BadRequestException('No se pueden agregar productos a un pedido cerrado o cancelado');
+
+    const prevTotal     = order.total;
+    const prevItemCount = order.items?.length ?? 0;
+
+    for (const item of dto.items) {
+      const existing = (order.items ?? []).find(i => i.productId === item.productId);
+      if (existing) {
+        const newQty = existing.quantity + item.quantity;
+        await this.itemRepo.update(existing.id, {
+          quantity: newQty,
+          subtotal: +(Number(existing.unitPrice) * newQty).toFixed(2),
+        });
+      } else {
+        await this.itemRepo.save(this.itemRepo.create({
+          productId:   item.productId,
+          productName: item.productName,
+          unitPrice:   item.unitPrice,
+          quantity:    item.quantity,
+          subtotal:    +(item.unitPrice * item.quantity).toFixed(2),
+          notes:       item.notes,
+          orderId,
+        }));
+      }
+    }
+
+    // Recargar y recalcular totales
+    const fresh = await this.orderRepo.findOne({ where: { id: orderId, tenantId }, relations: ['items'] });
+    if (!fresh) throw new NotFoundException('Order not found after update');
+
+    const subtotal = fresh.items.reduce((a, i) => a + Number(i.unitPrice) * i.quantity, 0);
+    const tax      = Math.round(subtotal * 0.19);
+    const discount = Number(fresh.discount) || 0;
+    fresh.subtotal = subtotal;
+    fresh.tax      = tax;
+    fresh.total    = subtotal + tax - discount;
+
+    const saved = await this.orderRepo.save(fresh);
+
+    auditLog({
+      tenantId,
+      userId:       actorId,
+      userRole:     actorRole,
+      module:       'orders',
+      action:       'APPEND_ORDER_ITEMS',
+      entityId:     saved.id,
+      entityType:   'Order',
+      previousValue: { total: prevTotal, itemCount: prevItemCount },
+      newValue:      { total: saved.total, itemCount: saved.items.length, appended: dto.items.length },
+      description:  `Productos adicionales al pedido ${order.orderNumber} (mesa ${order.tableNumber}) — ${dto.items.length} ítem(s) añadido(s) — Nuevo total: $${saved.total}`,
     });
 
     return saved;

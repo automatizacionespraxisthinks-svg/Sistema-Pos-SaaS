@@ -60,12 +60,16 @@ export const categoriesApi = {
   delete: (id: string) => api.delete(`/categories/${id}`),
 };
 export const ordersApi = {
-  list: (params?: any) => api.get('/orders', { params }),
-  get: (id: string) => api.get(`/orders/${id}`),
-  create: (data: any) => api.post('/orders', data),
-  updateStatus: (id: string, status: string, reason?: string) => api.patch(`/orders/${id}/status`, { status, reason }),
-  updateItems: (id: string, data: any) => api.put(`/orders/${id}/items`, data),
-  getActive: () => api.get('/orders/active'),
+  list:           (params?: any)                           => api.get('/orders', { params }),
+  get:            (id: string)                             => api.get(`/orders/${id}`),
+  create:         (data: any)                              => api.post('/orders', data),
+  updateStatus:   (id: string, status: string, reason?: string) => api.patch(`/orders/${id}/status`, { status, reason }),
+  updateItems:    (id: string, data: any)                  => api.put(`/orders/${id}/items`, data),
+  getActive:      ()                                       => api.get('/orders/active'),
+  /** Devuelve { order: Order | null } — order es null si la mesa está libre */
+  getOpenForTable:(tableNumber: string)                    => api.get<{ order: any | null }>(`/orders/table/${tableNumber}/open`),
+  /** Agrega ítems a un pedido abierto sin reemplazar los existentes */
+  appendItems:    (id: string, data: { items: any[] })     => api.post(`/orders/${id}/append-items`, data),
 };
 export const inventoryApi = {
   list: () => api.get('/inventory'),
@@ -97,6 +101,15 @@ export const recipesApi = {
   list:   ()           => api.get('/inventory/recipes'),
   upsert: (data: any)  => api.post('/inventory/recipes', data),
   delete: (productId: string) => api.delete(`/inventory/recipes/${productId}`),
+};
+export const tablesApi = {
+  list:       ()                            => api.get('/tables'),
+  create:     (data: any)                   => api.post('/tables', data),
+  update:     (id: string, data: any)       => api.patch(`/tables/${id}`, data),
+  remove:     (id: string)                  => api.delete(`/tables/${id}`),
+  /** Guarda posiciones/dimensiones de todas las mesas del plano en una sola llamada */
+  saveLayout: (positions: { id: string; posX: number; posY: number; width?: number; height?: number }[]) =>
+    api.patch('/tables/layout', { positions }),
 };
 export const kitchenApi = {
   create: (data: any) => api.post('/kitchen/tickets', data),

@@ -22,6 +22,23 @@ export class OrdersController {
   @Get('active')
   getActive(@Headers('x-tenant-id') tid: string) { return this.svc.getActive(tid); }
 
+  @Get('table/:tableNumber/open')
+  getOpenForTable(
+    @Headers('x-tenant-id') tid: string,
+    @Param('tableNumber') tableNumber: string,
+  ) {
+    return this.svc.getOpenOrderForTable(tid, tableNumber).then(order => ({ order }));
+  }
+
+  @Post(':id/append-items')
+  appendItems(
+    @Headers('x-tenant-id') tid: string,
+    @Headers('x-user-id')   uid: string,
+    @Headers('x-user-role') rol: string,
+    @Param('id') id: string,
+    @Body() dto: { items: any[] },
+  ) { return this.svc.appendItems(tid, id, dto as any, uid, rol); }
+
   @Get(':id')
   findOne(@Headers('x-tenant-id') tid: string, @Param('id') id: string) { return this.svc.findOne(tid, id); }
 
