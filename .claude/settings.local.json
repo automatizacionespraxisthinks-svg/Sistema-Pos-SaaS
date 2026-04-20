@@ -25,7 +25,10 @@
       "Bash(npx tsc:*)",
       "Bash(docker compose:*)",
       "Bash(not exist:*)",
-      "Bash(docker exec *)"
+      "Bash(docker exec *)",
+      "Bash(curl -s -X PUT http://localhost:3000/api/products/beef0401-0000-0000-0000-000000000000 -H 'Content-Type: application/json' -H 'x-tenant-id: test' -d '{\"name\":\"Burger Test\",\"price\":15000,\"status\":\"active\",\"categoryId\":\"beef0001-0000-0000-0000-000000000000\"}')",
+      "Bash(curl -v -X PUT http://localhost:3010/api/products/beef0401-0000-0000-0000-000000000000 -H 'Content-Type: application/json' -H 'Authorization: Bearer eytest' -d '{\"name\":\"Smash Burger Doble\",\"price\":32000,\"status\":\"active\",\"categoryId\":\"beef0001-0000-0000-0000-000000000000\",\"imageUrl\":\"\",\"sku\":\"HAM-001\"}')",
+      "Bash(curl -s -X PUT http://localhost:3000/api/products/beef0401-0000-0000-0000-000000000000 -H 'Content-Type: application/json' -H 'x-tenant-id: 217fdaa3-6fc5-4612-8e15-eb95c0235213' -d '{\"name\":\"Agua Mineral 500ml\",\"description\":\"\",\"price\":2500,\"status\":\"active\",\"sku\":\"BEB-005\",\"categoryId\":\"c1000001-0000-0000-0000-000000000004\"}')"
     ]
   }
 }
